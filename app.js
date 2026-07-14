@@ -6,6 +6,23 @@ const AIRTABLE_TOKEN = cfg.AIRTABLE_TOKEN || "";
 const AIRTABLE_BASE_ID = cfg.AIRTABLE_BASE_ID || "";
 const AIRTABLE_TABLE_NAME = cfg.AIRTABLE_TABLE_NAME || "ChallengeDB";
 const isCloudMode = AIRTABLE_TOKEN && !AIRTABLE_TOKEN.includes("YOUR_AIRTABLE") && !AIRTABLE_TOKEN.includes("XXXXXXXX");
+const isFileProtocol = window.location.protocol === "file:";
+
+function getCloudModeIssue() {
+    if (window.CONFIG_LOAD_ERROR) {
+        return "config.js 파일이 없습니다. config.example.js 를 복사해 config.js 를 만드세요.";
+    }
+    if (!AIRTABLE_TOKEN || AIRTABLE_TOKEN.includes("YOUR_AIRTABLE") || AIRTABLE_TOKEN.includes("XXXXXXXX")) {
+        return "config.js 에 Airtable 토큰을 입력해 주세요.";
+    }
+    if (!AIRTABLE_BASE_ID) {
+        return "config.js 에 AIRTABLE_BASE_ID 가 없습니다.";
+    }
+    if (isFileProtocol) {
+        return "index.html 을 직접 열면 연결되지 않습니다. start.bat 으로 실행하세요.";
+    }
+    return null;
+}
 
 const studentsData = {
     "유치원": ["김민아", "김지오", "오훈", "이주은", "이채은", "장호준"],
@@ -26,6 +43,7 @@ let appState = {
     detailStudent: { grade: '', name: '' },
     detailMonthIdx: 4,
     syncTimer: null,
+    connectionIssue: null,
     db: {
         brushing_records: {},
         brushing_pws: {},
@@ -116,6 +134,8 @@ window.addEventListener('DOMContentLoaded', () => {
     el.classRateLastMonth = document.getElementById('class-rate-last-month');
     el.connectionStatusBadge = document.getElementById('connection-status-badge');
     el.connectionStatusText = document.getElementById('connection-status-text');
+    el.connectionHelpBanner = document.getElementById('connection-help-banner');
+    el.connectionHelpText = document.getElementById('connection-help-text');
     el.loadingOverlay = document.getElementById('loading-overlay');
 
     initApp();
@@ -304,11 +324,20 @@ function stopPeriodicSync() {
 }
 
 async function syncWithAirtable() {
-    if (!isCloudMode) return false;
+    const issue = getCloudModeIssue();
+    if (issue) {
+        appState.connectionIssue = issue;
+        return false;
+    }
+    if (!isCloudMode) {
+        appState.connectionIssue = "클라우드 설정을 확인해 주세요.";
+        return false;
+    }
+
     try {
         const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_NAME}`;
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
         const response = await fetch(url, {
             headers: { "Authorization": `Bearer ${AIRTABLE_TOKEN}` },
             signal: controller.signal
@@ -338,11 +367,25 @@ async function syncWithAirtable() {
                 appState.db.brushing_pws = mergeSimpleObjects(appState.db.brushing_pws, tempPws);
                 appState.db.brushing_praises = mergePraises(appState.db.brushing_praises, tempPraises);
                 persistLocalDatabase();
+                appState.connectionIssue = null;
                 return true;
             }
         }
+
+        if (response.status === 401 || response.status === 403) {
+            appState.connectionIssue = "Airtable 토큰이 올바르지 않습니다. config.js 를 확인하세요.";
+        } else if (response.status === 404) {
+            appState.connectionIssue = "Airtable Base ID 또는 테이블 이름이 맞지 않습니다.";
+        } else {
+            appState.connectionIssue = `Airtable 연결 실패 (오류 ${response.status})`;
+        }
     } catch (e) {
         console.warn("에어테이블 통신 지연. 로컬 보존 모드로 작동합니다.", e);
+        if (isFileProtocol) {
+            appState.connectionIssue = "index.html 을 직접 열면 연결되지 않습니다. start.bat 으로 실행하세요.";
+        } else {
+            appState.connectionIssue = "인터넷 연결 또는 Airtable 접속을 확인해 주세요.";
+        }
     }
     return false;
 }
@@ -885,15 +928,23 @@ window.resetStudentPassword = async function(grade, name) {
 
 function updateConnectionBadge(status) {
     if (!el.connectionStatusBadge || !el.connectionStatusText) return;
+
+    const issue = appState.connectionIssue || getCloudModeIssue();
+
     if (status === null) {
         el.connectionStatusBadge.className = "flex items-center gap-1.5 bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-xs font-bold border";
         el.connectionStatusText.textContent = "연결 중...";
     } else if (status === true) {
         el.connectionStatusBadge.className = "flex items-center gap-1.5 bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold border border-emerald-300 animate-pulse";
         el.connectionStatusText.textContent = "● 에어테이블 연결됨";
+        if (el.connectionHelpBanner) el.connectionHelpBanner.classList.add('hidden');
     } else {
         el.connectionStatusBadge.className = "flex items-center gap-1.5 bg-slate-100 text-slate-500 px-3 py-1 rounded-full text-xs font-bold border border-slate-300";
-        el.connectionStatusText.textContent = "● 로컬 저장 모드";
+        el.connectionStatusText.textContent = issue ? "● 연결 안 됨" : "● 로컬 저장 모드";
+        if (el.connectionHelpBanner && el.connectionHelpText && issue) {
+            el.connectionHelpBanner.classList.remove('hidden');
+            el.connectionHelpText.textContent = issue;
+        }
     }
 }
 

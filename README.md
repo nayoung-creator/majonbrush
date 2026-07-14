@@ -2,9 +2,16 @@
 
 초등학생을 위한 양치 습관 챌린지 웹 앱입니다.
 
-## 실행 방법
+## 실행 방법 (Windows)
 
-브라우저에서 `index.html`을 열면 됩니다. 별도 빌드 과정은 없습니다.
+`index.html`을 **더블클릭하면 안 됩니다.** 브라우저 보안 때문에 Airtable 연결이 차단됩니다.
+
+1. `config.example.js`를 `config.js`로 복사하고 Airtable 토큰 입력
+2. **`start.bat` 더블클릭**으로 실행
+3. 브라우저에서 `http://localhost:8080` 이 자동으로 열림
+4. 오른쪽 위에 **"● 에어테이블 연결됨"** 이 보이면 성공
+
+`start.bat` 실행에는 **Node.js** 또는 **Python** 이 필요합니다.
 
 ## 설정
 
