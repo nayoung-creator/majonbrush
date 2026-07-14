@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>마전초등학교 양치 챌린지</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Jua', sans-serif; user-select: none; -webkit-user-select: none; }
+        @keyframes fall {
+            0% { transform: translateY(-50px) rotate(0deg); opacity: 1; }
+            100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+        }
+        .confetti {
+            position: absolute; width: 12px; height: 12px; border-radius: 50%;
+            animation: fall 3s linear infinite; pointer-events: none; z-index: 60;
+        }
+        @keyframes float {
+            0% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-10px) rotate(3deg); }
+            100% { transform: translateY(0px) rotate(0deg); }
+        }
+        .floating-tooth { animation: float 3s ease-in-out infinite; }
+        @keyframes bounceTwice {
+            0%, 100% { transform: translateY(0) scale(1); }
+            20%, 60% { transform: translateY(-20px) scale(1.02); }
+            40%, 80% { transform: translateY(0) scale(1); }
+        }
+        .bounce-twice { animation: bounceTwice 1.2s ease-out 1; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-emerald-50 w-screen h-screen flex items-center justify-center overflow-hidden p-2 md:p-6">
+
+    <div id="app-container" class="relative w-full h-full max-w-5xl max-h-[850px] bg-white rounded-3xl shadow-2xl border-4 border-teal-200 flex flex-col overflow-hidden">
+
+        <div id="loading-overlay" class="hidden absolute inset-0 bg-white/95 z-50 flex flex-col items-center justify-center gap-3">
+            <svg class="animate-spin h-10 w-10 text-teal-500" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p class="text-teal-700 font-bold text-lg">기록 저장 중입니다...</p>
+        </div>
+
+        <!-- 로그인 화면 -->
+        <div id="screen-login" class="flex-1 flex flex-col p-6 justify-between items-center">
+            <div class="w-full flex justify-end">
+                <div id="connection-status-badge" class="flex items-center gap-1.5 bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-xs font-bold border">
+                    <span class="w-2.5 h-2.5 rounded-full bg-gray-400"></span>
+                    <span id="connection-status-text">로컬 모드 기동</span>
+                </div>
+            </div>
+            <div class="text-center w-full">
+                <h1 class="text-3xl md:text-5xl text-teal-600 tracking-wider mb-2 drop-shadow-md">✨ 마전초등학교 양치 챌린지 ✨</h1>
+                <p class="text-gray-500 text-sm md:text-base">매일매일 깨끗하게 양치하고 반짝이는 이빨을 만들어요!</p>
+            </div>
+            <div class="flex items-center justify-center gap-6 my-4">
+                <svg viewBox="0 0 200 100" class="w-48 h-24">
+                    <circle cx="50" cy="50" r="30" fill="#FFD0A1" />
+                    <path d="M20 40 Q50 15 80 40" stroke="#4A3B32" stroke-width="12" fill="none" stroke-linecap="round"/>
+                    <circle cx="40" cy="45" r="3" fill="#333" /><circle cx="60" cy="45" r="3" fill="#333" />
+                    <circle cx="35" cy="52" r="4" fill="#FF8A8A" opacity="0.6" /><circle cx="65" cy="52" r="4" fill="#FF8A8A" opacity="0.6" />
+                    <path d="M42 58 Q50 70 58 58" stroke="#333" stroke-width="3" fill="#FF5E5E" stroke-linecap="round"/>
+                    <circle cx="150" cy="50" r="30" fill="#FFE2C6" />
+                    <path d="M120 45 Q150 10 180 45" stroke="#D15C28" stroke-width="12" fill="none" stroke-linecap="round"/>
+                    <path d="M120 40 L115 65" stroke="#D15C28" stroke-width="8" stroke-linecap="round"/>
+                    <path d="M180 40 L185 65" stroke="#D15C28" stroke-width="8" stroke-linecap="round"/>
+                    <circle cx="140" cy="48" r="3" fill="#333" /><circle cx="160" cy="48" r="3" fill="#333" />
+                    <circle cx="135" cy="55" r="4" fill="#FF8A8A" opacity="0.6" /><circle cx="165" cy="55" r="4" fill="#FF8A8A" opacity="0.6" />
+                    <path d="M142 58 Q150 70 158 58" stroke="#333" stroke-width="3" fill="#FF5E5E" stroke-linecap="round"/>
+                </svg>
+                <div class="floating-tooth flex flex-col items-center">
+                    <svg viewBox="0 0 100 100" class="w-28 h-28">
+                        <path d="M20,30 C20,10 80,10 80,30 C80,50 75,60 70,85 C68,92 58,92 55,85 C52,80 48,80 45,85 C42,92 32,92 30,85 C25,60 20,50 20,30 Z" fill="#FFFFFF" stroke="#333" stroke-width="4" stroke-linejoin="round"/>
+                        <circle cx="35" cy="40" r="4" fill="#333" /><circle cx="65" cy="40" r="4" fill="#333" />
+                        <circle cx="28" cy="46" r="6" fill="#FF8A8A" opacity="0.7" /><circle cx="72" cy="46" r="6" fill="#FF8A8A" opacity="0.7" />
+                        <path d="M43 48 Q50 58 57 48" stroke="#333" stroke-width="3.5" fill="#FF5E5E" stroke-linecap="round" />
+                        <path d="M10,65 L45,45" stroke="#3B82F6" stroke-width="6" stroke-linecap="round"/>
+                        <path d="M40,42 L45,45" stroke="#EF4444" stroke-width="8" stroke-linecap="round"/>
+                        <circle cx="43" cy="38" r="5" fill="#E0F2FE" /><circle cx="49" cy="43" r="4" fill="#E0F2FE" />
+                        <circle cx="38" cy="46" r="4" fill="#FFFFFF" stroke="#BAE6FD" stroke-width="1" />
+                    </svg>
+                    <span class="bg-teal-100 text-teal-800 text-xs px-2 py-0.5 rounded-full mt-1 border border-teal-300">치카치카 슥삭슥삭</span>
+                </div>
+            </div>
+            <div class="w-full max-w-md bg-teal-50 p-6 rounded-2xl border border-teal-100 shadow-inner flex flex-col gap-4">
+                <div>
+                    <label class="block text-gray-700 text-lg mb-2">🏫 학년 선택하기</label>
+                    <select id="select-grade" class="w-full p-3 text-lg rounded-xl border-2 border-teal-300 focus:outline-none focus:border-teal-500 bg-white">
+                        <option value="">-- 학년을 고르세요 --</option>
+                        <option value="유치원">유치원</option>
+                        <option value="1학년">1학년</option>
+                        <option value="2학년">2학년</option>
+                        <option value="3학년">3학년</option>
+                        <option value="4학년">4학년</option>
+                        <option value="5학년">5학년</option>
+                        <option value="6학년">6학년</option>
+                        <option value="관리자" class="text-red-500 font-bold">⚙️ 관리자 모드</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-gray-700 text-lg mb-2">👤 이름 선택하기</label>
+                    <select id="select-name" class="w-full p-3 text-lg rounded-xl border-2 border-teal-300 focus:outline-none focus:border-teal-500 bg-white" disabled>
+                        <option value="">-- 학년을 먼저 골라주세요 --</option>
+                    </select>
+                </div>
+            </div>
+            <button id="btn-login-next" class="w-full max-w-md bg-teal-500 hover:bg-teal-600 active:scale-95 transition-all text-white text-xl py-4 rounded-2xl shadow-lg font-bold mt-4">
+                입장하기 🚀
+            </button>
+        </div>
+
+        <!-- 비밀번호 화면 -->
+        <div id="screen-password" class="hidden flex-1 flex flex-col p-6 justify-between items-center bg-teal-50/30">
+            <div class="text-center">
+                <h2 id="pw-title" class="text-3xl text-teal-700 mb-2">🔒 비밀번호 설정하기</h2>
+                <p id="pw-desc" class="text-gray-500">처음 로그인하는 친구군요! 사용할 비밀번호 4자리를 정해주세요.</p>
+            </div>
+            <div class="w-full max-w-xs flex flex-col items-center gap-4">
+                <div class="flex gap-4 justify-center my-4">
+                    <div class="pw-dot w-12 h-12 rounded-full border-2 border-teal-400 bg-white flex items-center justify-center text-xl font-black text-teal-600 shadow-md"></div>
+                    <div class="pw-dot w-12 h-12 rounded-full border-2 border-teal-400 bg-white flex items-center justify-center text-xl font-black text-teal-600 shadow-md"></div>
+                    <div class="pw-dot w-12 h-12 rounded-full border-2 border-teal-400 bg-white flex items-center justify-center text-xl font-black text-teal-600 shadow-md"></div>
+                    <div class="pw-dot w-12 h-12 rounded-full border-2 border-teal-400 bg-white flex items-center justify-center text-xl font-black text-teal-600 shadow-md"></div>
+                </div>
+                <div class="grid grid-cols-3 gap-3 w-full max-w-xs">
+                    <button class="btn-num bg-white hover:bg-teal-100 active:scale-90 py-3 rounded-xl border border-teal-200 text-2xl font-bold shadow-sm" data-num="1">1</button>
+                    <button class="btn-num bg-white hover:bg-teal-100 active:scale-90 py-3 rounded-xl border border-teal-200 text-2xl font-bold shadow-sm" data-num="2">2</button>
+                    <button class="btn-num bg-white hover:bg-teal-100 active:scale-90 py-3 rounded-xl border border-teal-200 text-2xl font-bold shadow-sm" data-num="3">3</button>
+                    <button class="btn-num bg-white hover:bg-teal-100 active:scale-90 py-3 rounded-xl border border-teal-200 text-2xl font-bold shadow-sm" data-num="4">4</button>
+                    <button class="btn-num bg-white hover:bg-teal-100 active:scale-90 py-3 rounded-xl border border-teal-200 text-2xl font-bold shadow-sm" data-num="5">5</button>
+                    <button class="btn-num bg-white hover:bg-teal-100 active:scale-90 py-3 rounded-xl border border-teal-200 text-2xl font-bold shadow-sm" data-num="6">6</button>
+                    <button class="btn-num bg-white hover:bg-teal-100 active:scale-90 py-3 rounded-xl border border-teal-200 text-2xl font-bold shadow-sm" data-num="7">7</button>
+                    <button class="btn-num bg-white hover:bg-teal-100 active:scale-90 py-3 rounded-xl border border-teal-200 text-2xl font-bold shadow-sm" data-num="8">8</button>
+                    <button class="btn-num bg-white hover:bg-teal-100 active:scale-90 py-3 rounded-xl border border-teal-200 text-2xl font-bold shadow-sm" data-num="9">9</button>
+                    <button id="btn-pw-clear" class="bg-red-50 hover:bg-red-100 active:scale-90 py-3 rounded-xl border border-red-200 text-base font-bold text-red-500 shadow-sm">전체 지움</button>
+                    <button class="btn-num bg-white hover:bg-teal-100 active:scale-90 py-3 rounded-xl border border-teal-200 text-2xl font-bold shadow-sm" data-num="0">0</button>
+                    <button id="btn-pw-back" class="bg-gray-100 hover:bg-gray-200 active:scale-90 py-3 rounded-xl border border-gray-200 text-base font-bold text-gray-600 shadow-sm">← 지움</button>
+                </div>
+            </div>
+            <button id="btn-pw-cancel" class="text-teal-600 underline text-base font-medium">이전 화면으로 돌아가기</button>
+        </div>
+
+        <!-- 달력 화면 -->
+        <div id="screen-calendar" class="hidden flex-1 flex flex-col overflow-hidden">
+            <div class="bg-teal-500 text-white p-4 flex justify-between items-center shadow-md">
+                <span id="user-info-display" class="text-base md:text-lg font-bold">😊 [유치원] 김민아 학생</span>
+                <div class="flex items-center gap-2">
+                    <label for="calendar-month-select" class="text-xs md:text-sm text-teal-100">월 선택:</label>
+                    <select id="calendar-month-select" class="bg-teal-600 text-white border border-teal-400 rounded-xl px-3 py-1 text-sm md:text-base focus:outline-none focus:ring-2 focus:ring-teal-300 font-bold">
+                        <option value="4">2026년 5월</option>
+                        <option value="5">2026년 6월</option>
+                        <option value="6">2026년 7월</option>
+                        <option value="7">2026년 8월</option>
+                        <option value="8">2026년 9월</option>
+                        <option value="9">2026년 10월</option>
+                        <option value="10">2026년 11월</option>
+                        <option value="11">2026년 12월</option>
+                    </select>
+                </div>
+            </div>
+            <div class="flex-1 flex flex-col md:flex-row overflow-hidden p-4 gap-4">
+                <div class="w-full md:w-60 bg-teal-50/70 border-2 border-teal-100 rounded-2xl p-4 flex flex-col justify-between shadow-inner">
+                    <div>
+                        <h3 class="text-lg text-teal-700 font-bold mb-3 border-b-2 border-teal-200 pb-1 flex items-center gap-1">
+                            <span>📊</span> 우리 반 실천 현황
+                        </h3>
+                        <div class="flex flex-col gap-3">
+                            <div class="bg-white p-3 rounded-xl border border-teal-100 shadow-sm">
+                                <p class="text-xs text-gray-400">오늘 우리 반 실천율</p>
+                                <p id="class-rate-today" class="text-xl font-bold text-teal-600 font-sans">0%</p>
+                            </div>
+                            <div class="bg-white p-3 rounded-xl border border-teal-100 shadow-sm">
+                                <p class="text-xs text-gray-400 font-sans">이번 달 우리 반 실천율</p>
+                                <p id="class-rate-this-month" class="text-xl font-bold text-teal-600 font-sans">0%</p>
+                            </div>
+                            <div class="bg-white p-3 rounded-xl border border-teal-100 shadow-sm">
+                                <p class="text-xs text-gray-400 font-sans">지난 달 우리 반 실천율</p>
+                                <p id="class-rate-last-month" class="text-xl font-bold text-teal-600 font-sans">시작 전</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="hidden md:flex items-center gap-2 bg-white/60 p-2 rounded-xl mt-3 border border-teal-100">
+                        <span class="text-2xl">💡</span>
+                        <p class="text-[10px] text-teal-800 leading-tight">반 친구들과 함께 힘을 모아 100%에 도전해요!</p>
+                    </div>
+                </div>
+                <div class="flex-1 flex flex-col justify-between overflow-hidden">
+                    <div class="grid grid-cols-7 gap-2 text-center text-sm font-bold text-gray-500 mb-1">
+                        <div class="text-red-500">일</div><div>월</div><div>화</div><div>수</div><div>목</div><div>금</div><div class="text-blue-500">토</div>
+                    </div>
+                    <div id="calendar-grid" class="flex-1 grid grid-cols-7 gap-2"></div>
+                    <div class="flex justify-end pt-4 mt-2 border-t border-gray-100">
+                        <button id="btn-save" class="bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 active:scale-95 text-white text-lg md:text-xl font-bold px-8 py-3 rounded-2xl shadow-lg transition-all">
+                            💾 기록 저장하기
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 결과 화면 -->
+        <div id="screen-results" class="hidden flex-1 flex flex-col p-6 justify-between items-center bg-teal-50/10 overflow-y-auto">
+            <div class="text-center">
+                <h2 class="text-3xl md:text-4xl text-teal-700 mb-1">🎉 양치 기록 저장 완료!</h2>
+                <p class="text-gray-500 text-sm md:text-base">성실한 양치 습관은 나를 튼튼하게 지켜줘요.</p>
+            </div>
+            <div class="w-full max-w-md bg-white rounded-3xl border-2 border-teal-200 shadow-xl p-6 flex flex-col gap-4 my-4">
+                <div class="flex items-center justify-between bg-amber-50 p-4 rounded-2xl border border-amber-200">
+                    <div class="flex items-center gap-2">
+                        <span class="text-3xl">🔥</span>
+                        <div class="flex flex-col">
+                            <span class="text-lg text-gray-700">이번 달 연속 양치일</span>
+                            <span class="text-[10px] text-gray-400 leading-none">(매달 통계가 리셋됩니다)</span>
+                        </div>
+                    </div>
+                    <span id="stat-streak" class="text-2xl md:text-3xl font-black text-amber-600 font-sans">0일</span>
+                </div>
+                <div class="flex flex-col bg-blue-50 p-4 rounded-2xl border border-blue-200 gap-2">
+                    <div class="flex items-center justify-between">
+                        <div class="flex flex-col">
+                            <div class="flex items-center gap-2">
+                                <span class="text-3xl">📊</span>
+                                <span id="my-rate-title" class="text-lg text-gray-700 font-bold">나의 실천율</span>
+                            </div>
+                            <span class="text-[11px] text-gray-400 pl-8">(오늘까지 실천 가능일 기준)</span>
+                        </div>
+                        <span id="stat-my-rate" class="text-2xl md:text-3xl font-black text-blue-600 font-sans">0%</span>
+                    </div>
+                    <div class="w-full bg-blue-200 h-3 rounded-full overflow-hidden">
+                        <div id="bar-my-rate" class="bg-blue-500 h-full transition-all duration-1000" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="flex flex-col bg-teal-50 p-4 rounded-2xl border border-teal-200 gap-2">
+                    <div class="flex items-center justify-between">
+                        <div class="flex flex-col">
+                            <div class="flex items-center gap-2">
+                                <span class="text-3xl">👥</span>
+                                <span class="text-lg text-gray-700 font-bold">우리 반 실천율</span>
+                            </div>
+                            <span class="text-[11px] text-gray-400 pl-8">(오늘까지 실천 가능일 기준)</span>
+                        </div>
+                        <span id="stat-class-rate" class="text-2xl md:text-3xl font-black text-teal-600 font-sans">0%</span>
+                    </div>
+                    <div class="w-full bg-teal-200 h-3 rounded-full overflow-hidden">
+                        <div id="bar-class-rate" class="bg-teal-500 h-full transition-all duration-1000" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="flex flex-col bg-emerald-50 p-4 rounded-2xl border border-emerald-200 gap-2">
+                    <div class="flex items-center justify-between">
+                        <div class="flex flex-col">
+                            <div class="flex items-center gap-2">
+                                <span class="text-3xl">🏫</span>
+                                <span class="text-lg text-gray-700 font-bold">우리 학교 실천율</span>
+                            </div>
+                            <span class="text-[11px] text-gray-400 pl-8">(오늘까지 실천 가능일 기준)</span>
+                        </div>
+                        <span id="stat-school-rate" class="text-2xl md:text-3xl font-black text-emerald-600 font-sans">0%</span>
+                    </div>
+                    <div class="w-full bg-emerald-200 h-3 rounded-full overflow-hidden">
+                        <div id="bar-school-rate" class="bg-emerald-500 h-full transition-all duration-1000" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="w-full flex justify-end">
+                <button id="btn-back-to-main" class="bg-gray-800 hover:bg-gray-900 active:scale-95 text-white text-base md:text-lg font-bold px-6 py-3 rounded-2xl shadow-md transition-all">
+                    🏠 메인화면으로 돌아가기
+                </button>
+            </div>
+        </div>
+
+        <!-- 관리자 대시보드 -->
+        <div id="screen-admin" class="hidden flex-1 flex flex-col overflow-hidden bg-slate-50">
+            <div class="bg-slate-800 text-white p-4 flex justify-between items-center shadow-md">
+                <span class="text-lg md:text-xl font-bold">⚙️ 마전초등학교 양치 챌린지 [관리자 모드]</span>
+                <button id="btn-admin-logout" class="bg-red-500 hover:bg-red-600 text-white text-xs md:text-sm font-bold px-4 py-2 rounded-xl transition-all">로그아웃 (메인화면)</button>
+            </div>
+            <div class="p-4 grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-100 border-b border-slate-200 overflow-y-auto max-h-[180px]">
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-start gap-4">
+                    <div class="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center text-2xl flex-shrink-0">🏆</div>
+                    <div>
+                        <div class="text-gray-400 text-xs font-bold">최장 연속 양치 실천자 (선택 월 기준)</div>
+                        <div id="admin-best-student" class="text-sm md:text-base font-bold text-slate-700 mt-1 leading-relaxed">로딩 중...</div>
+                    </div>
+                </div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-start gap-4">
+                    <div class="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-2xl flex-shrink-0">🥇</div>
+                    <div>
+                        <div class="text-gray-400 text-xs font-bold">양치 실천율이 가장 높은 학년 (선택 월 기준)</div>
+                        <div id="admin-best-grade" class="text-sm md:text-base font-bold text-slate-700 mt-1 leading-relaxed">로딩 중...</div>
+                    </div>
+                </div>
+            </div>
+            <div class="flex-1 p-4 flex flex-col overflow-hidden gap-4">
+                <div class="flex flex-wrap items-center gap-4">
+                    <div class="flex items-center gap-2">
+                        <span class="text-slate-700 font-bold">조회 학년 선택:</span>
+                        <select id="admin-filter-grade" class="p-2 border-2 border-slate-300 rounded-xl bg-white focus:outline-none">
+                            <option value="유치원">유치원</option>
+                            <option value="1학년">1학년</option>
+                            <option value="2학년">2학년</option>
+                            <option value="3학년">3학년</option>
+                            <option value="4학년">4학년</option>
+                            <option value="5학년">5학년</option>
+                            <option value="6학년">6학년</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-slate-700 font-bold">조회 월 선택:</span>
+                        <select id="admin-filter-month" class="p-2 border-2 border-slate-300 rounded-xl bg-white focus:outline-none">
+                            <option value="4">2026년 5월</option>
+                            <option value="5">2026년 6월</option>
+                            <option value="6">2026년 7월</option>
+                            <option value="7">2026년 8월</option>
+                            <option value="8">2026년 9월</option>
+                            <option value="9">2026년 10월</option>
+                            <option value="10">2026년 11월</option>
+                            <option value="11">2026년 12월</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="flex-1 bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col shadow-sm">
+                    <div class="grid grid-cols-5 gap-1 bg-slate-100 p-3 text-slate-600 text-sm font-bold border-b border-slate-200 text-center">
+                        <div>이름 (상세 클릭)</div>
+                        <div>선택 월 실천율</div>
+                        <div>실천 일수 (실천/가능)</div>
+                        <div>최장 연속일</div>
+                        <div>비밀번호 / 초기화</div>
+                    </div>
+                    <div id="admin-student-list-container" class="flex-1 overflow-y-auto divide-y divide-slate-100 text-center text-sm md:text-base"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 양치 성공 팝업 -->
+    <div id="success-overlay" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div id="success-popup-card" class="bg-white rounded-3xl p-8 border-4 border-yellow-300 shadow-2xl text-center max-w-sm w-full flex flex-col items-center gap-4">
+            <svg viewBox="0 0 100 100" class="w-32 h-32">
+                <path d="M20,30 C20,10 80,10 80,30 C80,50 75,60 70,85 C68,92 58,92 55,85 C52,80 48,80 45,85 C42,92 32,92 30,85 C25,60 20,50 20,30 Z" fill="#FFFFFF" stroke="#333" stroke-width="4" stroke-linejoin="round"/>
+                <circle cx="35" cy="40" r="4" fill="#333" /><circle cx="65" cy="40" r="4" fill="#333" />
+                <circle cx="28" cy="46" r="6" fill="#FF8A8A" opacity="0.7" /><circle cx="72" cy="46" r="6" fill="#FF8A8A" opacity="0.7" />
+                <path d="M35 55 Q50 68 65 55" stroke="#333" stroke-width="4" fill="none" stroke-linecap="round" />
+                <polygon points="40,55 42,59 38,59" fill="#FFF" stroke="#333" stroke-width="1"/>
+                <polygon points="60,55 62,59 58,59" fill="#FFF" stroke="#333" stroke-width="1"/>
+                <path d="M10,15 L15,20 M15,15 L10,20" stroke="#FBBF24" stroke-width="3" stroke-linecap="round" />
+                <path d="M85,15 L90,20 M90,15 L85,20" stroke="#FBBF24" stroke-width="3" stroke-linecap="round" />
+            </svg>
+            <h3 class="text-3xl text-teal-600 font-bold">참 잘했어요! 🪥</h3>
+            <p class="text-gray-600 text-base">반짝이는 튼튼한 하얀 이빨이<br>고맙다고 인사하고 있어요!</p>
+            <button id="btn-success-close" class="mt-2 w-full bg-teal-500 hover:bg-teal-600 text-white font-bold py-3 rounded-xl shadow-md">달력으로 돌아가기 👍</button>
+        </div>
+    </div>
+
+    <!-- 칭찬 알림 팝업 -->
+    <div id="praise-overlay" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+        <div class="bg-gradient-to-b from-amber-50 to-white rounded-3xl p-8 border-4 border-amber-400 shadow-2xl text-center max-w-sm w-full flex flex-col items-center gap-4 animate-bounce duration-500">
+            <svg viewBox="0 0 100 100" class="w-24 h-24">
+                <path d="M10,80 L90,80 L80,30 L60,55 L50,20 L40,55 L20,30 Z" fill="#FBBF24" stroke="#D97706" stroke-width="4" stroke-linejoin="round"/>
+                <circle cx="50" cy="20" r="5" fill="#EF4444" /><circle cx="20" cy="30" r="5" fill="#EF4444" /><circle cx="80" cy="30" r="5" fill="#EF4444" />
+            </svg>
+            <h3 class="text-2xl text-amber-700 font-bold">✨ 양치왕 등극을 축하해요! ✨</h3>
+            <p id="praise-text" class="text-gray-700 font-semibold leading-relaxed">김민아 학생 축하합니다!</p>
+            <button id="btn-praise-close" class="mt-2 w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 rounded-xl shadow-md transition-all active:scale-95">확인하고 시작하기 🎉</button>
+        </div>
+    </div>
+
+    <!-- 관리자 학생 상세 모달 -->
+    <div id="modal-student-detail" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl flex flex-col gap-4 max-h-[90vh] overflow-y-auto border-4 border-slate-100">
+            <div class="flex justify-between items-center border-b pb-3">
+                <h3 id="detail-title" class="text-xl text-slate-800 font-bold">🔍 [유치원] 김민아 학생 상세 기록</h3>
+                <button onclick="closeStudentDetail()" class="text-slate-400 hover:text-slate-600 text-2xl font-bold">×</button>
+            </div>
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-50 p-3 rounded-2xl border">
+                <div class="flex items-center gap-2">
+                    <span class="text-slate-700 font-bold text-sm">조회 월 선택:</span>
+                    <select id="detail-month-select" class="p-1.5 border rounded-xl font-bold bg-white text-sm focus:outline-none">
+                        <option value="4">2026년 5월</option>
+                        <option value="5">2026년 6월</option>
+                        <option value="6">2026년 7월</option>
+                        <option value="7">2026년 8월</option>
+                        <option value="8">2026년 9월</option>
+                        <option value="9">2026년 10월</option>
+                        <option value="10">2026년 11월</option>
+                        <option value="11">2026년 12월</option>
+                    </select>
+                </div>
+                <div class="flex items-center gap-1 font-bold text-slate-800">
+                    <span>획득 왕관: </span>
+                    <span id="detail-crowns">👑👑</span>
+                </div>
+            </div>
+            <div class="border rounded-2xl p-4 bg-slate-50/50 shadow-inner">
+                <div class="grid grid-cols-7 gap-1 text-center text-xs font-bold text-gray-500 mb-2">
+                    <div>일</div><div>월</div><div>화</div><div>수</div><div>목</div><div>금</div><div>토</div>
+                </div>
+                <div id="detail-calendar-grid" class="grid grid-cols-7 gap-1"></div>
+            </div>
+            <div class="flex flex-col sm:flex-row justify-between items-center bg-teal-50/50 p-4 rounded-2xl border border-teal-100 gap-3">
+                <div class="flex gap-6">
+                    <div>
+                        <span class="text-xs text-slate-400">선택 월 실천율</span>
+                        <p id="detail-stat-rate" class="text-xl font-bold text-teal-600 font-sans">0%</p>
+                    </div>
+                    <div>
+                        <span class="text-xs text-slate-400">최장 연속 실천일</span>
+                        <p id="detail-stat-streak" class="text-xl font-bold text-amber-600 font-sans">0일</p>
+                    </div>
+                </div>
+                <button id="btn-send-praise" class="hidden bg-amber-500 hover:bg-amber-600 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-md transition-all active:scale-95">📢 칭찬 보내기</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
