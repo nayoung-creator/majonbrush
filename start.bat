@@ -10,8 +10,11 @@ echo.
 
 if not exist "index.html" (
     echo [오류] index.html 파일이 없습니다.
-    echo Git Bash에서 아래 명령을 실행하세요:
-    echo   git checkout cursor/brushing-challenge-updates-4539
+    echo.
+    echo 이 폴더의 파일:
+    dir /b
+    echo.
+    echo start 가 안 열리면 "양치챌린지_실행.bat" 또는 "실행.vbs" 를 눌러 보세요.
     echo.
     pause
     exit /b 1

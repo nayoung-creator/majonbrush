@@ -1,0 +1,33 @@
+마전초등학교 양치 챌린지 - Windows 실행 방법
+========================================
+
+[중요] index.html 더블클릭으로 열면 Airtable 연결이 안 됩니다.
+
+실행 순서
+---------
+1. config.example.js 를 config.js 로 복사
+2. config.js 에 Airtable 토큰 입력
+3. 아래 중 하나로 실행:
+
+   (1) 양치챌린지_실행.bat  더블클릭  ← 가장 추천
+   (2) 실행.vbs             더블클릭  ← bat 이 안 열릴 때
+   (3) start.bat            더블클릭
+
+4. 검은 창이 뜬 상태로 유지
+5. 브라우저에서 http://localhost:8080 접속
+
+start 를 눌러도 창이 안 뜰 때
+---------------------------
+- 탐색기 → 보기 → "파일 이름 확장명" 체크
+- start 가 start.bat 인지 확인 (start.bat.txt 아님)
+- "양치챌린지_실행.bat" 또는 "실행.vbs" 사용
+- 우클릭 → "관리자 권한으로 실행" 시도
+
+수동 실행 (Git Bash 또는 cmd)
+-----------------------------
+cd "폴더경로\majonbrush"
+양치챌린지_실행.bat
+
+또는 PowerShell:
+cd "폴더경로\majonbrush"
+powershell -ExecutionPolicy Bypass -File server.ps1

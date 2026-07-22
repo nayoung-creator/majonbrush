@@ -12,7 +12,8 @@
    git checkout cursor/brushing-challenge-updates-4539
    git pull
    ```
-3. **`start.bat` 더블클릭**으로 실행
+3. **`양치챌린지_실행.bat`** 더블클릭 (또는 `실행.vbs`)
+   - `start`만 눌렀을 때 창이 안 뜨면 위 두 파일 사용
 4. 검은 창에 `서버 실행 중!` 이 보이면 성공
 5. 브라우저에서 `http://localhost:8080` 접속
 6. 오른쪽 위에 **"● 에어테이블 연결됨"** 이 보이면 완료
