@@ -1,0 +1,76 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main, cursor/brushing-challenge-updates-4539]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build static site
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+          AIRTABLE_BASE_ID: ${{ secrets.AIRTABLE_BASE_ID }}
+          AIRTABLE_TABLE_NAME: ${{ secrets.AIRTABLE_TABLE_NAME }}
+        run: |
+          python3 <<'PY'
+          import json, os
+          from pathlib import Path
+
+          site = Path("_site")
+          site.mkdir(exist_ok=True)
+          for name in ["index.html", "app.js", "airtable-check.html"]:
+              src = Path(name)
+              if not src.exists():
+                  raise SystemExit(f"missing {name}")
+              (site / name).write_bytes(src.read_bytes())
+
+          token = (os.environ.get("AIRTABLE_TOKEN") or "").strip() or "YOUR_AIRTABLE_TOKEN_HERE"
+          base = (os.environ.get("AIRTABLE_BASE_ID") or "").strip() or "appUm6kKSp0yI1mCF"
+          table = (os.environ.get("AIRTABLE_TABLE_NAME") or "").strip() or "ChallengeDB"
+          if token == "YOUR_AIRTABLE_TOKEN_HERE":
+              print("::warning::AIRTABLE_TOKEN secret is not set. Site will not sync until you add the secret and redeploy.")
+
+          cfg = {
+              "AIRTABLE_TOKEN": token,
+              "AIRTABLE_BASE_ID": base,
+              "AIRTABLE_TABLE_NAME": table,
+              "AIRTABLE_FIELD_KEY": "Key",
+              "AIRTABLE_FIELD_VALUE": "Value",
+          }
+          (site / "config.js").write_text(
+              "window.APP_CONFIG = " + json.dumps(cfg, ensure_ascii=False, indent=2) + ";\n",
+              encoding="utf-8",
+          )
+          print("Published:", sorted(p.name for p in site.iterdir()))
+          PY
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

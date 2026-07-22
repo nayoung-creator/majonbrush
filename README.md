@@ -2,42 +2,71 @@
 
 초등학생을 위한 양치 습관 챌린지 웹 앱입니다.
 
-## 실행 방법 (Windows)
+## 온라인 배포 (추천)
 
-`index.html`을 **더블클릭하면 안 됩니다.** 브라우저 보안 때문에 Airtable 연결이 차단됩니다.
+배포하면 학생·선생님이 **인터넷 주소**로 바로 접속할 수 있습니다.  
+(`start.bat` / localhost 불필요)
 
-1. `config.example.js`를 `config.js`로 복사하고 Airtable 토큰 입력
-2. Git Bash에서 최신 브랜치 받기:
-   ```bash
-   git checkout cursor/brushing-challenge-updates-4539
-   git pull
-   ```
-3. **`양치챌린지_실행.bat`** 더블클릭 (또는 `실행.vbs`)
-   - `start`만 눌렀을 때 창이 안 뜨면 위 두 파일 사용
-4. 검은 창에 `서버 실행 중!` 이 보이면 성공
-5. 브라우저에서 `http://localhost:8080` 접속
-6. 오른쪽 위에 **"● 에어테이블 연결됨"** 이 보이면 완료
+### A. GitHub Pages (이 저장소)
 
-### localhost 연결 안 될 때
+1. GitHub 저장소 → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**
+   - `AIRTABLE_TOKEN` = Airtable Personal Access Token (`pat...`)
+   - `AIRTABLE_BASE_ID` = Base ID (`app...`)  ← 선택, 없으면 기본값 사용
+   - `AIRTABLE_TABLE_NAME` = 테이블 이름 (예: `ChallengeDB`) ← 선택
+2. **Settings** → **Pages** → **Build and deployment**
+   - Source: **GitHub Actions**
+3. **Actions** 탭에서 `Deploy to GitHub Pages` 워크플로가 성공했는지 확인
+4. 배포 주소 예:
+   - `https://nayoung-creator.github.io/majonbrush/`
 
-- `start.bat` 실행 후 **검은 창을 닫지 마세요** (닫으면 서버 종료)
-- 검은 창에 `서버 실행 중!` 메시지가 보이는지 확인
-- 브라우저 주소창에 직접 입력: `http://localhost:8080`
-- 그래도 안 되면 `http://127.0.0.1:8080` 시도
+Secrets를 넣은 뒤 다시 배포하려면 Actions에서 **Run workflow** 를 누르거나, 코드를 push 하면 됩니다.
 
-## 설정
+### B. Netlify (드래그앤드롭도 가능)
 
-1. `config.example.js`를 `config.js`로 복사합니다.
-2. `config.js`에 Airtable Personal Access Token을 입력합니다.
+1. [Netlify Drop](https://app.netlify.com/drop) 접속
+2. 로컬에서 배포 폴더 만들기:
 
 ```bash
-cp config.example.js config.js
+cd majonbrush
+git pull
+export AIRTABLE_TOKEN='pat여기에토큰'
+export AIRTABLE_BASE_ID='app여기에BaseID'
+export AIRTABLE_TABLE_NAME='ChallengeDB'
+bash scripts/build-config.sh
 ```
 
-`config.js`는 Git에 포함되지 않습니다.
+3. 생성된 **`dist` 폴더**를 Netlify Drop에 드래그
+4. 발급된 `https://xxxx.netlify.app` 주소를 학생에게 공유
 
-- 학년/이름 선택 후 4자리 비밀번호로 로그인
-- 달력에서 오늘 양치 여부 기록
-- Airtable 연동으로 여러 기기 간 데이터 동기화
-- 나의/우리 반/우리 학교 실천율 통계 (오늘까지 실천 가능일 기준)
-- 관리자 대시보드 (비밀번호: `0625`)
+또는 Netlify에 GitHub 저장소를 연결하고 Environment variables에 위 값을 넣으면 자동 배포됩니다.
+
+### C. Vercel
+
+1. [vercel.com](https://vercel.com)에 GitHub 저장소 import
+2. Environment Variables에 `AIRTABLE_TOKEN`, `AIRTABLE_BASE_ID`, `AIRTABLE_TABLE_NAME` 등록
+3. Deploy → 공개 URL 사용
+
+> **보안 참고:** 이 앱은 브라우저에서 Airtable을 호출하므로, 배포된 `config.js` 안에 토큰이 포함됩니다.  
+> Airtable 토큰은 **양치 챌린지 Base만** 권한을 주고, 읽기/쓰기만 허용하세요.
+
+---
+
+## 로컬 실행 (Windows)
+
+`index.html`을 **더블클릭하면 안 됩니다.**
+
+1. `config.example.js` → `config.js` 복사 후 토큰 입력
+2. `양치챌린지_실행.bat` 실행
+3. `http://localhost:8080` 접속
+4. **● 에어테이블 연결됨** 확인
+
+---
+
+## 주요 기능
+
+- 학년/이름 + 4자리 비밀번호 로그인
+- 달력 양치 기록 (7/25~8/17은 오전·오후·저녁 3칸)
+- Airtable로 여러 기기 동기화
+- 명예의 전당 (6·7월 기록 + 이후 월별 1~5등)
+- 칸 단위 실천율 (여름방학 기간 7/25~8/31 합산)
+- 관리자 비밀번호: `0625`

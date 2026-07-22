@@ -1,0 +1,4 @@
+{
+  "buildCommand": "bash scripts/build-config.sh",
+  "outputDirectory": "dist"
+}

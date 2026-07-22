@@ -1,0 +1,9 @@
+[build]
+  command = "bash scripts/build-config.sh"
+  publish = "dist"
+
+[build.environment]
+  # Set these in Netlify Site settings → Environment variables:
+  # AIRTABLE_TOKEN
+  # AIRTABLE_BASE_ID
+  # AIRTABLE_TABLE_NAME
