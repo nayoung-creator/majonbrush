@@ -372,12 +372,14 @@ async function syncWithAirtable() {
             }
         }
 
-        if (response.status === 401 || response.status === 403) {
-            appState.connectionIssue = "Airtable 토큰이 올바르지 않습니다. config.js 를 확인하세요.";
+        if (response.status === 401) {
+            appState.connectionIssue = "토큰이 잘못되었거나 만료되었습니다. Airtable에서 새 토큰을 발급해 config.js에 넣으세요.";
+        } else if (response.status === 403) {
+            appState.connectionIssue = "토큰에 이 Base 접근 권한이 없습니다. 토큰 Access에서 Base ID와 같은 Base를 추가하세요.";
         } else if (response.status === 404) {
-            appState.connectionIssue = "Airtable Base ID 또는 테이블 이름이 맞지 않습니다.";
+            appState.connectionIssue = "Base ID 또는 테이블 이름이 틀렸습니다. Airtable 왼쪽 하단 '표 이름'과 config.js의 AIRTABLE_TABLE_NAME을 맞추세요.";
         } else {
-            appState.connectionIssue = `Airtable 연결 실패 (오류 ${response.status})`;
+            appState.connectionIssue = `Airtable 연결 실패 (오류 ${response.status}). airtable-check.html 로 진단하세요.`;
         }
     } catch (e) {
         console.warn("에어테이블 통신 지연. 로컬 보존 모드로 작동합니다.", e);

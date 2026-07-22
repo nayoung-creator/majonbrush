@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Airtable 연결 테스트</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 min-h-screen p-6 font-sans">
+    <div class="max-w-lg mx-auto bg-white rounded-2xl shadow-lg p-6 space-y-4">
+        <h1 class="text-xl font-bold text-teal-700">🔧 Airtable 연결 진단</h1>
+        <p class="text-sm text-gray-600">양치 챌린지 실행 전에 설정이 맞는지 확인합니다.</p>
+        <div id="out" class="text-sm space-y-2"></div>
+        <button id="btn-test" class="w-full bg-teal-600 text-white py-3 rounded-xl font-bold">다시 테스트</button>
+        <a href="index.html" class="block text-center text-teal-600 underline text-sm">← 양치 챌린지로 돌아가기</a>
+    </div>
+    <script src="config.js" onerror="window.CONFIG_LOAD_ERROR = true"></script>
+    <script>
+        const out = document.getElementById('out');
+        function line(html) {
+            const d = document.createElement('div');
+            d.innerHTML = html;
+            out.appendChild(d);
+        }
+        function maskToken(t) {
+            if (!t || t.length < 8) return '(없음)';
+            return t.slice(0, 6) + '...' + t.slice(-4);
+        }
+        async function runTest() {
+            out.innerHTML = '';
+            const cfg = window.APP_CONFIG || {};
+            const token = cfg.AIRTABLE_TOKEN || '';
+            const baseId = cfg.AIRTABLE_BASE_ID || '';
+            const tableName = cfg.AIRTABLE_TABLE_NAME || 'ChallengeDB';
+
+            if (window.CONFIG_LOAD_ERROR) {
+                line('<p class="text-red-600 font-bold">❌ config.js 를 불러올 수 없습니다.</p>');
+                line('<p>config.example.js 를 config.js 로 복사했는지 확인하세요.</p>');
+                return;
+            }
+            if (!token || token.includes('YOUR_AIRTABLE')) {
+                line('<p class="text-red-600 font-bold">❌ config.js 에 토큰이 없습니다.</p>');
+                return;
+            }
+            if (location.protocol === 'file:') {
+                line('<p class="text-amber-700 font-bold">⚠️ file:// 로 열렸습니다. 양치챌린지_실행.bat 으로 localhost 로 열어주세요.</p>');
+            }
+
+            line(`<p><b>토큰:</b> ${maskToken(token)} (pat 로 시작 권장)</p>`);
+            line(`<p><b>Base ID:</b> ${baseId || '(없음)'}</p>`);
+            line(`<p><b>테이블 이름:</b> ${tableName}</p>`);
+            line('<p class="text-gray-500">※ 테이블 이름 = Base 안 왼쪽 아래 표 이름 (Base 이름과 다를 수 있음)</p>');
+
+            const url = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}?maxRecords=1`;
+            line('<p class="mt-2">연결 테스트 중...</p>');
+
+            try {
+                const res = await fetch(url, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                const text = await res.text();
+                if (res.ok) {
+                    line('<p class="text-green-700 font-bold text-lg">✅ 연결 성공!</p>');
+                    line('<p>index.html 로 가서 새로고침(Ctrl+F5) 하세요.</p>');
+                    try {
+                        const j = JSON.parse(text);
+                        line(`<p>테이블 레코드 접근 OK (현재 ${(j.records || []).length}건 조회)</p>`);
+                    } catch (_) {}
+                    return;
+                }
+                line(`<p class="text-red-600 font-bold">❌ 실패 — HTTP ${res.status}</p>`);
+                if (res.status === 401) {
+                    line('<p><b>원인:</b> 토큰이 잘못되었거나 만료됨</p>');
+                    line('<p><b>해결:</b> airtable.com/create/tokens 에서 새 토큰 발급 후 config.js 에 붙여넣기</p>');
+                } else if (res.status === 403) {
+                    line('<p><b>원인:</b> 토큰에 이 Base 접근 권한 없음</p>');
+                    line('<p><b>해결:</b> 토큰 Access → + Add a base → URL의 Base ID 와 같은 Base 선택</p>');
+                } else if (res.status === 404) {
+                    line('<p><b>원인:</b> Base ID 또는 <u>테이블 이름</u> 오류</p>');
+                    line('<p><b>해결:</b> Airtable 왼쪽 하단 표 이름을 config.js 의 AIRTABLE_TABLE_NAME 과 똑같이 맞추기</p>');
+                    line('<p>열 이름은 <b>Key</b>, <b>Value</b> (대소문자 포함)</p>');
+                } else {
+                    line(`<p class="text-xs text-gray-500 break-all">${text.slice(0, 200)}</p>`);
+                }
+            } catch (e) {
+                line('<p class="text-red-600 font-bold">❌ 네트워크 오류</p>');
+                line(`<p>${e.message}</p>`);
+                line('<p>localhost:8080 으로 열었는지, 인터넷 연결을 확인하세요.</p>');
+            }
+        }
+        document.getElementById('btn-test').addEventListener('click', runTest);
+        runTest();
+    </script>
+</body>
+</html>
