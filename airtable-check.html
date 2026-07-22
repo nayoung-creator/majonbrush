@@ -29,9 +29,9 @@
         async function runTest() {
             out.innerHTML = '';
             const cfg = window.APP_CONFIG || {};
-            const token = cfg.AIRTABLE_TOKEN || '';
-            const baseId = cfg.AIRTABLE_BASE_ID || '';
-            const tableName = cfg.AIRTABLE_TABLE_NAME || 'ChallengeDB';
+            const token = (cfg.AIRTABLE_TOKEN || '').trim();
+            const baseId = (cfg.AIRTABLE_BASE_ID || '').trim();
+            const tableName = (cfg.AIRTABLE_TABLE_NAME || 'ChallengeDB').trim();
 
             if (window.CONFIG_LOAD_ERROR) {
                 line('<p class="text-red-600 font-bold">❌ config.js 를 불러올 수 없습니다.</p>');
@@ -49,7 +49,9 @@
             line(`<p><b>토큰:</b> ${maskToken(token)} (pat 로 시작 권장)</p>`);
             line(`<p><b>Base ID:</b> ${baseId || '(없음)'}</p>`);
             line(`<p><b>테이블 이름:</b> ${tableName}</p>`);
-            line('<p class="text-gray-500">※ 테이블 이름 = Base 안 왼쪽 아래 표 이름 (Base 이름과 다를 수 있음)</p>');
+            line(`<p><b>열 이름 Key:</b> ${(cfg.AIRTABLE_FIELD_KEY || 'Key')}</p>`);
+            line(`<p><b>열 이름 Value:</b> ${(cfg.AIRTABLE_FIELD_VALUE || 'Value')}</p>`);
+            line('<p class="text-gray-500">※ GitHub 저장소 파일명(index.html 등)과 Airtable 이름은 무관합니다.</p>');
 
             const url = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}?maxRecords=1`;
             line('<p class="mt-2">연결 테스트 중...</p>');

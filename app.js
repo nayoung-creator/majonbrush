@@ -2,10 +2,30 @@ const ADMIN_PASSWORD = "0625";
 const SYNC_INTERVAL_MS = 30000;
 
 const cfg = window.APP_CONFIG || {};
-const AIRTABLE_TOKEN = cfg.AIRTABLE_TOKEN || "";
-const AIRTABLE_BASE_ID = cfg.AIRTABLE_BASE_ID || "";
-const AIRTABLE_TABLE_NAME = cfg.AIRTABLE_TABLE_NAME || "ChallengeDB";
-const isCloudMode = AIRTABLE_TOKEN && !AIRTABLE_TOKEN.includes("YOUR_AIRTABLE") && !AIRTABLE_TOKEN.includes("XXXXXXXX");
+const AIRTABLE_TOKEN = (cfg.AIRTABLE_TOKEN || "").trim();
+const AIRTABLE_BASE_ID = (cfg.AIRTABLE_BASE_ID || "").trim();
+const AIRTABLE_TABLE_NAME = (cfg.AIRTABLE_TABLE_NAME || "ChallengeDB").trim();
+const isCloudMode = AIRTABLE_TOKEN && !AIRTABLE_TOKEN.includes("YOUR_AIRTABLE") && !AIRTABLE_TOKEN.includes("XXXXXXXX") && AIRTABLE_BASE_ID.startsWith("app");
+
+function getAirtableFieldKeyName() {
+    return (cfg.AIRTABLE_FIELD_KEY || "Key").trim();
+}
+function getAirtableFieldValueName() {
+    return (cfg.AIRTABLE_FIELD_VALUE || "Value").trim();
+}
+function readAirtableRecordFields(fields) {
+    const kName = getAirtableFieldKeyName();
+    const vName = getAirtableFieldValueName();
+    return {
+        key: fields[kName] ?? fields.Key ?? fields.key,
+        val: fields[vName] ?? fields.Value ?? fields.value
+    };
+}
+function airtableTableUrl(suffix = "") {
+    const base = encodeURIComponent(AIRTABLE_BASE_ID);
+    const table = encodeURIComponent(AIRTABLE_TABLE_NAME);
+    return `https://api.airtable.com/v0/${base}/${table}${suffix}`;
+}
 const isFileProtocol = window.location.protocol === "file:";
 
 function getCloudModeIssue() {
@@ -17,6 +37,9 @@ function getCloudModeIssue() {
     }
     if (!AIRTABLE_BASE_ID) {
         return "config.js 에 AIRTABLE_BASE_ID 가 없습니다.";
+    }
+    if (!AIRTABLE_BASE_ID.startsWith("app")) {
+        return "AIRTABLE_BASE_ID 는 app 으로 시작해야 합니다. Airtable URL 에서 복사하세요.";
     }
     if (isFileProtocol) {
         return "index.html 을 직접 열면 연결되지 않습니다. start.bat 으로 실행하세요.";
@@ -335,7 +358,7 @@ async function syncWithAirtable() {
     }
 
     try {
-        const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_NAME}`;
+        const url = airtableTableUrl("?maxRecords=100");
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 8000);
         const response = await fetch(url, {
@@ -349,8 +372,7 @@ async function syncWithAirtable() {
             if (result && result.records) {
                 let tempRecords = {}, tempPws = {}, tempPraises = {};
                 result.records.forEach(rec => {
-                    const key = rec.fields.Key;
-                    const val = rec.fields.Value;
+                    const { key, val } = readAirtableRecordFields(rec.fields || {});
                     if (key && val) {
                         try {
                             const parsed = JSON.parse(val);
@@ -367,19 +389,25 @@ async function syncWithAirtable() {
                 appState.db.brushing_pws = mergeSimpleObjects(appState.db.brushing_pws, tempPws);
                 appState.db.brushing_praises = mergePraises(appState.db.brushing_praises, tempPraises);
                 persistLocalDatabase();
-                appState.connectionIssue = null;
-                return true;
             }
+            appState.connectionIssue = null;
+            return true;
         }
 
+        let apiHint = "";
+        try {
+            const errJson = JSON.parse(await response.text());
+            if (errJson.error && errJson.error.message) apiHint = ` (${errJson.error.message})`;
+        } catch (_) { /* ignore */ }
+
         if (response.status === 401) {
-            appState.connectionIssue = "토큰이 잘못되었거나 만료되었습니다. Airtable에서 새 토큰을 발급해 config.js에 넣으세요.";
+            appState.connectionIssue = `토큰이 잘못되었거나 만료되었습니다. 새 pat 토큰을 config.js에 넣으세요.${apiHint}`;
         } else if (response.status === 403) {
-            appState.connectionIssue = "토큰에 이 Base 접근 권한이 없습니다. 토큰 Access에서 Base ID와 같은 Base를 추가하세요.";
+            appState.connectionIssue = `토큰에 이 Base 권한이 없습니다. 토큰 Access에서 Base ID ${AIRTABLE_BASE_ID} 와 같은 Base를 추가하세요.${apiHint}`;
         } else if (response.status === 404) {
-            appState.connectionIssue = "Base ID 또는 테이블 이름이 틀렸습니다. Airtable 왼쪽 하단 '표 이름'과 config.js의 AIRTABLE_TABLE_NAME을 맞추세요.";
+            appState.connectionIssue = `Base ID 또는 테이블 이름 "${AIRTABLE_TABLE_NAME}" 이 틀렸습니다. Airtable 왼쪽 하단 표 이름과 config.js 를 맞추세요.${apiHint}`;
         } else {
-            appState.connectionIssue = `Airtable 연결 실패 (오류 ${response.status}). airtable-check.html 로 진단하세요.`;
+            appState.connectionIssue = `Airtable 연결 실패 (HTTP ${response.status})${apiHint}. airtable-check.html 로 확인하세요.`;
         }
     } catch (e) {
         console.warn("에어테이블 통신 지연. 로컬 보존 모드로 작동합니다.", e);
@@ -407,7 +435,10 @@ async function saveToAirtable(key, data) {
         const mergedData = appState.db[key];
         persistLocalDatabase();
 
-        const selectUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_NAME}?filterByFormula=({Key}='${key}')`;
+        const fieldKey = getAirtableFieldKeyName();
+        const fieldValue = getAirtableFieldValueName();
+        const escapedKey = key.replace(/'/g, "\\'");
+        const selectUrl = `${airtableTableUrl()}?filterByFormula=({${fieldKey}}='${escapedKey}')`;
         const response = await fetch(selectUrl, { headers: { "Authorization": `Bearer ${AIRTABLE_TOKEN}` } });
         if (!response.ok) return;
 
@@ -417,15 +448,16 @@ async function saveToAirtable(key, data) {
             "Authorization": `Bearer ${AIRTABLE_TOKEN}`,
             "Content-Type": "application/json"
         };
+        const recordFields = { [fieldKey]: key, [fieldValue]: valueStr };
 
         if (result && result.records && result.records.length > 0) {
-            await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_NAME}/${result.records[0].id}`, {
-                method: "PATCH", headers, body: JSON.stringify({ fields: { "Value": valueStr } })
+            await fetch(`${airtableTableUrl()}/${result.records[0].id}`, {
+                method: "PATCH", headers, body: JSON.stringify({ fields: { [fieldValue]: valueStr } })
             });
         } else {
-            await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_NAME}`, {
+            await fetch(airtableTableUrl(), {
                 method: "POST", headers,
-                body: JSON.stringify({ records: [{ fields: { "Key": key, "Value": valueStr } }] })
+                body: JSON.stringify({ records: [{ fields: recordFields }] })
             });
         }
     } catch (e) {
