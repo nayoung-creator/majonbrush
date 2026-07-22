@@ -57,6 +57,133 @@ const studentsData = {
     "6학년": ["김겨울", "김기헌", "김성민", "김윤형", "노건호", "오세준", "장태평", "정민준", "조한결"]
 };
 
+const SLOT_KEYS = ["morning", "afternoon", "evening"];
+const SLOT_LABELS = { morning: "오전", afternoon: "오후", evening: "저녁" };
+const OPEN_INPUT_START = "2026-07-25";
+const OPEN_INPUT_END = "2026-08-17";
+const SUMMER_RATE_START = "2026-07-25";
+const SUMMER_RATE_END = "2026-08-31";
+
+const HISTORICAL_HALL_OF_FAME = {
+    5: {
+        monthLabel: "2026년 6월",
+        ranks: [
+            { rank: 1, names: ["안이정", "이은우"] },
+            { rank: 2, names: ["장치원"] },
+            { rank: 3, names: ["노지호", "장호원", "장태평"] }
+        ]
+    },
+    6: {
+        monthLabel: "2026년 7월",
+        ranks: [
+            { rank: 1, names: ["노지호", "정윤하", "노연호", "장치원"] },
+            { rank: 2, names: ["이서하"] },
+            { rank: 3, names: ["신은하", "유민호", "최한결", "이수연", "노건호", "장태평"] }
+        ]
+    }
+};
+
+const LOGIN_CHEERS = [
+    ["이번 달도 화이팅!", "깨끗한 치아를 위해 화이팅!"],
+    ["오늘도 치카치카!", "반짝이는 이빨을 만들어요!"],
+    ["양치 습관은 보물!", "우리 함께 100%에 도전해요!"]
+];
+
+function isOpenInputDate(dateStr) {
+    return dateStr >= OPEN_INPUT_START && dateStr <= OPEN_INPUT_END;
+}
+
+function isMultiSlotDate(dateStr) {
+    return isOpenInputDate(dateStr);
+}
+
+function isSummerRateMonth(monthIndex) {
+    return monthIndex === 6 || monthIndex === 7;
+}
+
+function emptySlots() {
+    return { morning: false, afternoon: false, evening: false };
+}
+
+function normalizeSlots(val) {
+    if (val === true) return { morning: true, afternoon: true, evening: true };
+    if (val && typeof val === "object") {
+        return {
+            morning: val.morning === true,
+            afternoon: val.afternoon === true,
+            evening: val.evening === true
+        };
+    }
+    return emptySlots();
+}
+
+function mergeDayValue(a, b) {
+    const aObj = a && typeof a === "object";
+    const bObj = b && typeof b === "object";
+    if (a === true && !bObj) return true;
+    if (b === true && !aObj) return true;
+    if (a === true || b === true || aObj || bObj) {
+        const oa = normalizeSlots(a === true ? true : a);
+        const ob = normalizeSlots(b === true ? true : b);
+        return {
+            morning: oa.morning || ob.morning,
+            afternoon: oa.afternoon || ob.afternoon,
+            evening: oa.evening || ob.evening
+        };
+    }
+    return a === true || b === true;
+}
+
+function dayCompletedSlots(val, dateStr) {
+    if (isMultiSlotDate(dateStr)) {
+        const s = normalizeSlots(val);
+        return SLOT_KEYS.filter(k => s[k]).length;
+    }
+    if (val === true) return 1;
+    if (val && typeof val === "object") {
+        const s = normalizeSlots(val);
+        return SLOT_KEYS.every(k => s[k]) ? 1 : (SLOT_KEYS.some(k => s[k]) ? 1 : 0);
+    }
+    return 0;
+}
+
+function dayMaxSlots(dateStr) {
+    return isMultiSlotDate(dateStr) ? 3 : 1;
+}
+
+function isDayFullyBrushed(val, dateStr) {
+    const max = dayMaxSlots(dateStr);
+    return max > 0 && dayCompletedSlots(val, dateStr) === max;
+}
+
+function isDayAnyBrushed(val, dateStr) {
+    return dayCompletedSlots(val, dateStr) > 0;
+}
+
+function getSlotTimeWindow(slot) {
+    if (slot === "morning") return { start: 6 * 3600, end: 12 * 3600 };
+    if (slot === "afternoon") return { start: 12 * 3600, end: 18 * 3600 };
+    return { start: 18 * 3600, end: 24 * 3600 };
+}
+
+function isSlotEditableNow(dateStr, slot) {
+    const now = new Date();
+    const todayStr = formatDate(now);
+    if (dateStr !== todayStr) return false;
+    if (!isMultiSlotDate(dateStr)) return true;
+    const secs = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+    const win = getSlotTimeWindow(slot);
+    return secs >= win.start && secs < win.end;
+}
+
+function formatDate(d) {
+    return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, "0")}-${d.getDate().toString().padStart(2, "0")}`;
+}
+
+function dateInRange(dateStr, start, end) {
+    return dateStr >= start && dateStr <= end;
+}
+
 let appState = {
     currentStudent: { grade: '', name: '' },
     activeRecord: {},
@@ -88,7 +215,7 @@ function deepMergeBrushingRecords(local, remote) {
     Object.keys(remote || {}).forEach(studentKey => {
         if (!merged[studentKey]) merged[studentKey] = {};
         Object.keys(remote[studentKey] || {}).forEach(date => {
-            merged[studentKey][date] = merged[studentKey][date] === true || remote[studentKey][date] === true;
+            merged[studentKey][date] = mergeDayValue(merged[studentKey][date], remote[studentKey][date]);
         });
     });
     return merged;
@@ -160,6 +287,11 @@ window.addEventListener('DOMContentLoaded', () => {
     el.connectionHelpBanner = document.getElementById('connection-help-banner');
     el.connectionHelpText = document.getElementById('connection-help-text');
     el.loadingOverlay = document.getElementById('loading-overlay');
+    el.hofMonthLabel = document.getElementById('hof-month-label');
+    el.hofWinners = document.getElementById('hof-winners');
+    el.hofSchoolRate = document.getElementById('hof-school-rate');
+    el.loginCheer1 = document.getElementById('login-cheer-1');
+    el.loginCheer2 = document.getElementById('login-cheer-2');
 
     initApp();
 });
@@ -167,10 +299,13 @@ window.addEventListener('DOMContentLoaded', () => {
 function initApp() {
     syncDefaultMonth();
     updateConnectionBadge(null);
+    setLoginCheers();
+    renderHallOfFame();
 
     syncWithAirtable().then(success => {
         updateConnectionBadge(success);
         refreshActiveStudentView();
+        renderHallOfFame();
     });
 
     el.selectGrade.addEventListener('change', () => {
@@ -317,7 +452,11 @@ function resetToLogin() {
     el.selectName.disabled = true;
     el.screenResults.classList.add('hidden');
     el.screenAdmin.classList.add('hidden');
+    el.screenCalendar.classList.add('hidden');
+    el.screenPassword.classList.add('hidden');
     el.screenLogin.classList.remove('hidden');
+    setLoginCheers();
+    renderHallOfFame();
 }
 
 function refreshActiveStudentView() {
@@ -555,8 +694,9 @@ function buildCalendar() {
         const cell = document.createElement('div');
         const dayOfWeek = (startingDayIndex + day - 1) % 7;
         let textColor = dayOfWeek === 0 ? 'text-red-500' : dayOfWeek === 6 ? 'text-blue-500' : 'text-gray-800';
-        const isBrushed = appState.activeRecord[dateStr] === true;
+        const dayVal = appState.activeRecord[dateStr];
         const excludedStatus = isExcludedDate(dateStr);
+        const multi = isMultiSlotDate(dateStr);
 
         if (excludedStatus.excluded) {
             cell.className = getExcludedCellClass(excludedStatus.type);
@@ -564,7 +704,23 @@ function buildCalendar() {
         } else {
             const isToday = cellTime === todayMidnight;
             const isFuture = cellTime > todayMidnight;
-            if (isToday) {
+            if (multi) {
+                cell.className = isToday
+                    ? `border-4 border-teal-400 rounded-2xl flex flex-col p-1 bg-white shadow-lg ring-2 ring-teal-100 z-10`
+                    : isFuture
+                        ? `border border-slate-200 rounded-2xl flex flex-col p-1 bg-slate-50 opacity-50`
+                        : `border border-slate-200 rounded-2xl flex flex-col p-1 bg-slate-50/80`;
+                cell.innerHTML = getMultiSlotCellHTML(day, textColor, dayVal, dateStr, isToday, isFuture);
+                if (isToday) {
+                    cell.querySelectorAll('[data-slot]').forEach(btn => {
+                        btn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            toggleSlotStatus(dateStr, btn.getAttribute('data-slot'), cell, dayOfWeek);
+                        });
+                    });
+                }
+            } else if (isToday) {
+                const isBrushed = dayVal === true || isDayFullyBrushed(dayVal, dateStr);
                 cell.className = `border-4 border-teal-400 rounded-2xl flex flex-col justify-between p-2 cursor-pointer transition-all active:scale-95 bg-white shadow-lg ring-4 ring-teal-100 ring-offset-1 z-10`;
                 if (isBrushed) cell.classList.add('bg-teal-50');
                 cell.innerHTML = getTodayCellHTML(day, textColor, isBrushed);
@@ -573,12 +729,33 @@ function buildCalendar() {
                 cell.className = `border border-slate-200 rounded-2xl flex flex-col justify-between p-2 bg-slate-50 opacity-50 pointer-events-none`;
                 cell.innerHTML = `<div class="font-sans font-bold text-base md:text-lg text-slate-400">${day}</div><div class="flex-1 flex flex-col items-center justify-center"><span class="text-xl md:text-2xl text-slate-400 font-sans">❓</span></div>`;
             } else {
+                const isBrushed = dayVal === true || isDayAnyBrushed(dayVal, dateStr);
                 cell.className = `border border-slate-200 rounded-2xl flex flex-col justify-between p-2 bg-slate-100/50 opacity-60 pointer-events-none`;
                 cell.innerHTML = `<div class="font-sans font-bold text-base md:text-lg ${textColor}">${day}</div><div class="flex-1 flex flex-col items-center justify-center">${isBrushed ? '<span class="text-3xl md:text-4xl filter grayscale opacity-45">🪥</span>' : '<span class="text-base text-slate-300 font-sans">❌</span>'}</div>`;
             }
         }
         el.calendarGrid.appendChild(cell);
     }
+}
+
+function getMultiSlotCellHTML(day, textColor, dayVal, dateStr, isToday, isFuture) {
+    const slots = normalizeSlots(dayVal);
+    const badge = isToday ? '<span class="text-[9px] bg-teal-500 text-white px-1 rounded-full font-sans">오늘</span>' : '';
+    const buttons = SLOT_KEYS.map(slot => {
+        const done = slots[slot];
+        const editable = isToday && isSlotEditableNow(dateStr, slot);
+        const locked = isToday && !editable;
+        let cls = done
+            ? 'bg-teal-500 text-white'
+            : locked
+                ? 'bg-slate-100 text-slate-300'
+                : isFuture
+                    ? 'bg-slate-50 text-slate-300'
+                    : 'bg-white text-teal-700 border border-teal-200';
+        const cursor = editable ? 'cursor-pointer active:scale-95' : 'pointer-events-none';
+        return `<button type="button" data-slot="${slot}" class="${cls} ${cursor} text-[9px] md:text-[10px] font-bold rounded-lg py-0.5 px-0.5 leading-tight">${SLOT_LABELS[slot]}${done ? '✓' : ''}</button>`;
+    }).join('');
+    return `<div class="font-sans font-bold text-xs ${textColor} flex justify-between items-center px-0.5">${day}${badge}</div><div class="flex-1 grid grid-cols-1 gap-0.5 mt-0.5">${buttons}</div>`;
 }
 
 function getExcludedCellClass(type) {
@@ -612,7 +789,7 @@ function getTodayCellHTML(day, textColor, isBrushed) {
 }
 
 function toggleBrushingStatus(dateStr, cellElement, dayOfWeek) {
-    const newStatus = appState.activeRecord[dateStr] !== true;
+    const newStatus = !(appState.activeRecord[dateStr] === true || isDayFullyBrushed(appState.activeRecord[dateStr], dateStr));
     appState.activeRecord[dateStr] = newStatus;
     const studentKey = `${appState.currentStudent.grade}-${appState.currentStudent.name}`;
     appState.db.brushing_records[studentKey] = { ...appState.activeRecord };
@@ -628,6 +805,34 @@ function toggleBrushingStatus(dateStr, cellElement, dayOfWeek) {
         cellElement.classList.remove('bg-teal-50');
     }
     cellElement.innerHTML = getTodayCellHTML(dayNum, textColor, newStatus);
+    updateClassStatsWidget();
+}
+
+function toggleSlotStatus(dateStr, slot, cellElement, dayOfWeek) {
+    if (!isSlotEditableNow(dateStr, slot)) {
+        alert(`${SLOT_LABELS[slot]} 칸은 해당 시간대에만 입력할 수 있어요.`);
+        return;
+    }
+    const prev = normalizeSlots(appState.activeRecord[dateStr]);
+    const wasComplete = SLOT_KEYS.every(k => prev[k]);
+    prev[slot] = !prev[slot];
+    appState.activeRecord[dateStr] = { ...prev };
+    const studentKey = `${appState.currentStudent.grade}-${appState.currentStudent.name}`;
+    appState.db.brushing_records[studentKey] = { ...appState.activeRecord };
+    saveToAirtable('brushing_records', appState.db.brushing_records);
+
+    const dayNum = parseInt(dateStr.split('-')[2]);
+    let textColor = dayOfWeek === 0 ? 'text-red-500' : dayOfWeek === 6 ? 'text-blue-500' : 'text-gray-800';
+    cellElement.innerHTML = getMultiSlotCellHTML(dayNum, textColor, appState.activeRecord[dateStr], dateStr, true, false);
+    cellElement.querySelectorAll('[data-slot]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleSlotStatus(dateStr, btn.getAttribute('data-slot'), cellElement, dayOfWeek);
+        });
+    });
+
+    const nowComplete = SLOT_KEYS.every(k => prev[k]);
+    if (nowComplete && !wasComplete) triggerConfetti();
     updateClassStatsWidget();
 }
 
@@ -648,50 +853,85 @@ function triggerConfetti() {
     }
 }
 
+function getSummerRateDatesFull() {
+    const dates = [];
+    let d = new Date(2026, 6, 25);
+    const end = new Date(2026, 7, 31);
+    while (d <= end) {
+        const ds = formatDate(d);
+        if (!isExcludedDate(ds).excluded || isOpenInputDate(ds)) dates.push(ds);
+        d.setDate(d.getDate() + 1);
+    }
+    return dates;
+}
+
+function getRatePeriodDatesUntilToday(monthIndex) {
+    const todayStr = formatDate(new Date());
+    if (new Date().getFullYear() !== 2026) return [];
+
+    if (isSummerRateMonth(monthIndex)) {
+        return getSummerRateDatesFull().filter(ds => ds <= todayStr);
+    }
+    return getEligibleDatesUntilToday(monthIndex);
+}
+
+function countRecordSlots(record, dates) {
+    let done = 0, max = 0;
+    dates.forEach(d => {
+        max += dayMaxSlots(d);
+        done += dayCompletedSlots(record[d], d);
+    });
+    return { done, max };
+}
+
 function updateClassStatsWidget() {
     const grade = appState.currentStudent.grade;
     const classmates = studentsData[grade] || [];
-    const classSize = classmates.length;
-    if (classSize === 0) return;
+    if (classmates.length === 0) return;
 
-    const today = new Date();
-    const todayStr = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
+    const todayStr = formatDate(new Date());
     const isTodayEx = isExcludedDate(todayStr).excluded;
 
     if (isTodayEx) {
         el.classRateToday.textContent = "공휴일/휴무";
         el.classRateToday.className = "text-sm text-gray-400 font-bold font-sans";
     } else {
-        let todayBrushedCount = 0;
+        let todayDone = 0, todayMax = 0;
         classmates.forEach(name => {
-            const key = `${grade}-${name}`;
-            if (appState.db.brushing_records[key]?.[todayStr] === true) todayBrushedCount++;
+            const val = appState.db.brushing_records[`${grade}-${name}`]?.[todayStr];
+            todayDone += dayCompletedSlots(val, todayStr);
+            todayMax += dayMaxSlots(todayStr);
         });
-        el.classRateToday.textContent = `${Math.round((todayBrushedCount / classSize) * 100)}%`;
+        el.classRateToday.textContent = todayMax > 0 ? `${Math.round((todayDone / todayMax) * 100)}%` : "0%";
         el.classRateToday.className = "text-xl font-bold text-teal-600 font-sans";
     }
 
-    const possibleDates = getPossibleDatesForMonth(appState.selectedMonthIndex);
-    if (possibleDates.length > 0) {
-        let totalTicks = 0;
+    const periodDates = getRatePeriodDatesUntilToday(appState.selectedMonthIndex);
+    if (periodDates.length > 0) {
+        let totalDone = 0, totalMax = 0;
         classmates.forEach(name => {
-            const sRecord = appState.db.brushing_records[`${grade}-${name}`] || {};
-            possibleDates.forEach(d => { if (sRecord[d] === true) totalTicks++; });
+            const c = countRecordSlots(appState.db.brushing_records[`${grade}-${name}`] || {}, periodDates);
+            totalDone += c.done;
+            totalMax += c.max;
         });
-        el.classRateThisMonth.textContent = `${Math.round((totalTicks / (classSize * possibleDates.length)) * 100)}%`;
+        el.classRateThisMonth.textContent = totalMax > 0 ? `${Math.round((totalDone / totalMax) * 100)}%` : "0%";
     } else {
         el.classRateThisMonth.textContent = "기록 없음";
     }
 
     if (appState.selectedMonthIndex > 4) {
-        const lastMonthPossibleDates = getPossibleDatesForMonth(appState.selectedMonthIndex - 1);
-        if (lastMonthPossibleDates.length > 0) {
-            let totalTicks = 0;
+        const lastIdx = appState.selectedMonthIndex - 1;
+        let lastDates;
+        if (isSummerRateMonth(lastIdx)) lastDates = getSummerRateDatesFull();
+        else lastDates = getPossibleDatesForMonth(lastIdx);
+        if (lastDates.length > 0) {
+            let totalDone = 0, totalMax = 0;
             classmates.forEach(name => {
-                const sRecord = appState.db.brushing_records[`${grade}-${name}`] || {};
-                lastMonthPossibleDates.forEach(d => { if (sRecord[d] === true) totalTicks++; });
+                const c = countRecordSlots(appState.db.brushing_records[`${grade}-${name}`] || {}, lastDates);
+                totalDone += c.done;
+                totalMax += c.max;
             });
-            el.classRateLastMonth.textContent = `${Math.round((totalTicks / (classSize * lastMonthPossibleDates.length)) * 100)}%`;
+            el.classRateLastMonth.textContent = totalMax > 0 ? `${Math.round((totalDone / totalMax) * 100)}%` : (HISTORICAL_HALL_OF_FAME[lastIdx] ? "기록 보관" : "0%");
         } else {
             el.classRateLastMonth.textContent = "0%";
         }
@@ -701,56 +941,55 @@ function updateClassStatsWidget() {
 }
 
 function calculateIndividualStats() {
-    const eligibleDates = getEligibleDatesUntilToday(appState.selectedMonthIndex);
+    const eligibleDates = getRatePeriodDatesUntilToday(appState.selectedMonthIndex);
     const monthNames = ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"];
-    el.myRateTitle.textContent = `${monthNames[appState.selectedMonthIndex]} 나의 실천율`;
+    el.myRateTitle.textContent = isSummerRateMonth(appState.selectedMonthIndex)
+        ? "여름방학 기간 나의 실천율"
+        : `${monthNames[appState.selectedMonthIndex]} 나의 실천율`;
 
     let currentStreak = 0;
     if (eligibleDates.length > 0) {
         let checkStartIndex = eligibleDates.length - 1;
         const lastDate = eligibleDates[eligibleDates.length - 1];
         const prevDate = eligibleDates.length > 1 ? eligibleDates[eligibleDates.length - 2] : null;
-        const lastChecked = appState.activeRecord[lastDate] === true;
-        const prevChecked = prevDate ? appState.activeRecord[prevDate] === true : false;
+        const lastChecked = isDayFullyBrushed(appState.activeRecord[lastDate], lastDate);
+        const prevChecked = prevDate ? isDayFullyBrushed(appState.activeRecord[prevDate], prevDate) : false;
         if (lastChecked || prevChecked) {
             if (!lastChecked) checkStartIndex = eligibleDates.length - 2;
             for (let i = checkStartIndex; i >= 0; i--) {
-                if (appState.activeRecord[eligibleDates[i]] === true) currentStreak++;
+                if (isDayFullyBrushed(appState.activeRecord[eligibleDates[i]], eligibleDates[i])) currentStreak++;
                 else break;
             }
         }
     }
     el.statStreak.textContent = `${currentStreak}일`;
 
-    let brushedCount = 0;
-    eligibleDates.forEach(d => { if (appState.activeRecord[d] === true) brushedCount++; });
-    const myRatePercent = eligibleDates.length > 0 ? Math.round((brushedCount / eligibleDates.length) * 100) : 0;
+    const myCount = countRecordSlots(appState.activeRecord, eligibleDates);
+    const myRatePercent = myCount.max > 0 ? Math.round((myCount.done / myCount.max) * 100) : 0;
     el.statMyRate.textContent = `${myRatePercent}%`;
     el.barMyRate.style.width = `${myRatePercent}%`;
 
     const grade = appState.currentStudent.grade;
     const classmates = studentsData[grade] || [];
-    let totalClassTicks = 0;
+    let totalClassDone = 0, totalClassMax = 0;
     classmates.forEach(name => {
-        const sRecord = appState.db.brushing_records[`${grade}-${name}`] || {};
-        eligibleDates.forEach(d => { if (sRecord[d] === true) totalClassTicks++; });
+        const c = countRecordSlots(appState.db.brushing_records[`${grade}-${name}`] || {}, eligibleDates);
+        totalClassDone += c.done;
+        totalClassMax += c.max;
     });
-    const classSlots = classmates.length * eligibleDates.length;
-    const classRatePercent = classSlots > 0 ? Math.round((totalClassTicks / classSlots) * 100) : 0;
+    const classRatePercent = totalClassMax > 0 ? Math.round((totalClassDone / totalClassMax) * 100) : 0;
     el.statClassRate.textContent = `${classRatePercent}%`;
     el.barClassRate.style.width = `${classRatePercent}%`;
 
-    let totalSchoolTicks = 0;
-    let totalSchoolStudents = 0;
+    let totalSchoolDone = 0, totalSchoolMax = 0;
     Object.keys(studentsData).forEach(g => {
         studentsData[g].forEach(n => {
-            const sRecord = appState.db.brushing_records[`${g}-${n}`] || {};
-            eligibleDates.forEach(d => { if (sRecord[d] === true) totalSchoolTicks++; });
-            totalSchoolStudents++;
+            const c = countRecordSlots(appState.db.brushing_records[`${g}-${n}`] || {}, eligibleDates);
+            totalSchoolDone += c.done;
+            totalSchoolMax += c.max;
         });
     });
-    const schoolSlots = totalSchoolStudents * eligibleDates.length;
-    const schoolRatePercent = schoolSlots > 0 ? Math.round((totalSchoolTicks / schoolSlots) * 100) : 0;
+    const schoolRatePercent = totalSchoolMax > 0 ? Math.round((totalSchoolDone / totalSchoolMax) * 100) : 0;
     el.statSchoolRate.textContent = `${schoolRatePercent}%`;
     el.barSchoolRate.style.width = `${schoolRatePercent}%`;
 }
@@ -769,7 +1008,7 @@ async function enterAdminDashboard() {
 
 function updateAdminGlobalStats() {
     const selectedMonthIdx = parseInt(el.adminFilterMonth.value);
-    const possibleDates = getPossibleDatesForMonth(selectedMonthIdx);
+    const possibleDates = isSummerRateMonth(selectedMonthIdx) ? getSummerRateDatesFull() : getPossibleDatesForMonth(selectedMonthIdx);
     const studentStreakList = [];
     let globalMaxStreak = 0;
 
@@ -789,10 +1028,12 @@ function updateAdminGlobalStats() {
     let globalMaxGradeRate = -1;
     Object.keys(studentsData).forEach(g => {
         let totalBrushed = 0;
-        const totalSlots = studentsData[g].length * possibleDates.length;
+        let totalSlots = 0;
         studentsData[g].forEach(name => {
             const sRecord = appState.db.brushing_records[`${g}-${name}`] || {};
-            possibleDates.forEach(d => { if (sRecord[d] === true) totalBrushed++; });
+            const c = countRecordSlots(sRecord, possibleDates);
+            totalBrushed += c.done;
+            totalSlots += c.max;
         });
         const rate = totalSlots > 0 ? (totalBrushed / totalSlots) * 100 : 0;
         gradeRateList.push({ grade: g, rate });
@@ -805,14 +1046,13 @@ function updateAdminGlobalStats() {
 }
 
 function calculateCrowns(targetGrade, targetName, monthIdx) {
-    const possibleDates = getPossibleDatesForMonth(monthIdx);
+    const possibleDates = isSummerRateMonth(monthIdx) ? getSummerRateDatesFull() : getPossibleDatesForMonth(monthIdx);
     if (possibleDates.length === 0) return 0;
 
     const getRate = (g, name) => {
         const sRecord = appState.db.brushing_records[`${g}-${name}`] || {};
-        let ticks = 0;
-        possibleDates.forEach(d => { if (sRecord[d] === true) ticks++; });
-        return (ticks / possibleDates.length) * 100;
+        const c = countRecordSlots(sRecord, possibleDates);
+        return c.max > 0 ? (c.done / c.max) * 100 : 0;
     };
 
     const targetRate = getRate(targetGrade, targetName);
@@ -842,16 +1082,16 @@ function renderAdminStudentList() {
     const selectedGrade = el.adminFilterGrade.value;
     const studentsInGrade = studentsData[selectedGrade] || [];
     const selectedMonthIdx = parseInt(el.adminFilterMonth.value);
-    const possibleDates = getPossibleDatesForMonth(selectedMonthIdx);
+    const possibleDates = isSummerRateMonth(selectedMonthIdx) ? getSummerRateDatesFull() : getPossibleDatesForMonth(selectedMonthIdx);
 
     studentsInGrade.forEach(name => {
         const studentKey = `${selectedGrade}-${name}`;
         const sRecord = appState.db.brushing_records[studentKey] || {};
         const sPw = appState.db.brushing_pws[studentKey];
-        let brushedDays = 0;
-        possibleDates.forEach(d => { if (sRecord[d] === true) brushedDays++; });
+        const slotCount = countRecordSlots(sRecord, possibleDates);
+        const brushedDays = slotCount.done;
         const maxStreak = getMaxStreak(sRecord, possibleDates);
-        const rate = possibleDates.length > 0 ? Math.round((brushedDays / possibleDates.length) * 100) : 0;
+        const rate = slotCount.max > 0 ? Math.round((slotCount.done / slotCount.max) * 100) : 0;
         const crowns = calculateCrowns(selectedGrade, name, selectedMonthIdx);
         let crownIcons = crowns === 2 ? ' 👑👑' : crowns === 1 ? ' 👑' : '';
 
@@ -862,7 +1102,7 @@ function renderAdminStudentList() {
                 🔍 <span>${name}${crownIcons}</span>
             </div>
             <div class="font-bold text-blue-500 font-sans">${rate}%</div>
-            <div class="text-slate-600 font-sans">${brushedDays} / ${possibleDates.length}일</div>
+            <div class="text-slate-600 font-sans">${brushedDays} / ${slotCount.max}칸</div>
             <div class="text-amber-600 font-bold font-sans">${maxStreak}일</div>
             <div>${sPw ? `<button onclick="resetStudentPassword('${selectedGrade}', '${name}')" class="bg-red-100 hover:bg-red-200 text-red-700 font-bold px-3 py-1.5 rounded-lg text-xs transition-all">🔑 초기화</button>` : `<span class="text-gray-400 text-xs font-sans">미설정</span>`}</div>
         `;
@@ -888,11 +1128,11 @@ window.renderStudentDetailView = function() {
     const studentKey = `${grade}-${name}`;
     document.getElementById('detail-title').textContent = `🔍 [${grade}] ${name} 학생 상세 기록`;
     const sRecord = appState.db.brushing_records[studentKey] || {};
-    const possibleDates = getPossibleDatesForMonth(monthIdx);
-    let brushedDays = 0;
-    possibleDates.forEach(d => { if (sRecord[d] === true) brushedDays++; });
+    const possibleDates = isSummerRateMonth(monthIdx) ? getSummerRateDatesFull() : getPossibleDatesForMonth(monthIdx);
+    const slotCount = countRecordSlots(sRecord, possibleDates);
+    const brushedDays = slotCount.done;
     const maxStreak = getMaxStreak(sRecord, possibleDates);
-    const rate = possibleDates.length > 0 ? Math.round((brushedDays / possibleDates.length) * 100) : 0;
+    const rate = slotCount.max > 0 ? Math.round((slotCount.done / slotCount.max) * 100) : 0;
     document.getElementById('detail-stat-rate').textContent = `${rate}%`;
     document.getElementById('detail-stat-streak').textContent = `${maxStreak}일`;
 
@@ -933,7 +1173,7 @@ window.renderStudentDetailView = function() {
         const cellTime = new Date(year, monthIdx, day).getTime();
         const dateStr = `${year}-${(monthIdx + 1).toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
         const cell = document.createElement('div');
-        const isBrushed = sRecord[dateStr] === true;
+        const dayVal = sRecord[dateStr];
         const excludedStatus = isExcludedDate(dateStr);
         const isFuture = cellTime > todayMidnight;
         cell.className = "border border-slate-200 rounded-lg flex flex-col justify-between p-1 bg-slate-50 text-[10px] h-10 relative overflow-hidden";
@@ -941,8 +1181,12 @@ window.renderStudentDetailView = function() {
             cell.className += " opacity-40 bg-gray-100";
             cell.innerHTML = `<span class="text-gray-400">${day}</span>`;
         } else {
-            let symbol = isBrushed ? '🪥' : '❌';
+            let symbol = '❌';
             if (isFuture) symbol = '❓';
+            else if (isMultiSlotDate(dateStr)) {
+                const done = dayCompletedSlots(dayVal, dateStr);
+                symbol = done === 3 ? '🪥' : (done > 0 ? `${done}/3` : '❌');
+            } else if (dayVal === true || isDayFullyBrushed(dayVal, dateStr)) symbol = '🪥';
             cell.innerHTML = `<span class="text-gray-500 font-sans font-bold">${day}</span><span class="absolute right-1 bottom-1 text-[11px] font-sans">${symbol}</span>`;
         }
         detailGrid.appendChild(cell);
@@ -1003,6 +1247,9 @@ function updatePwDots() {
 }
 
 function isExcludedDate(dateStr) {
+    if (isOpenInputDate(dateStr)) {
+        return { excluded: false, reason: '', type: '' };
+    }
     const parts = dateStr.split('-');
     const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
     const dayOfWeek = d.getDay();
@@ -1058,7 +1305,7 @@ function getEligibleDatesUntilToday(monthIndex) {
 function getMaxStreak(record, activeDates) {
     let maxStreak = 0, tempStreak = 0;
     activeDates.forEach(d => {
-        if (record[d] === true) {
+        if (isDayFullyBrushed(record[d], d) || record[d] === true) {
             tempStreak++;
             if (tempStreak > maxStreak) maxStreak = tempStreak;
         } else {
@@ -1066,4 +1313,110 @@ function getMaxStreak(record, activeDates) {
         }
     });
     return maxStreak;
+}
+
+function setLoginCheers() {
+    const pair = LOGIN_CHEERS[Math.floor(Math.random() * LOGIN_CHEERS.length)];
+    if (el.loginCheer1) el.loginCheer1.textContent = pair[0];
+    if (el.loginCheer2) el.loginCheer2.textContent = pair[1];
+}
+
+function getLastCompletedMonthIndex() {
+    const today = new Date();
+    if (today.getFullYear() !== 2026) return 6;
+    const m = today.getMonth();
+    if (m <= 4) return 5;
+    return m - 1;
+}
+
+function computeSchoolRateForMonth(monthIdx) {
+    let dates;
+    if (isSummerRateMonth(monthIdx)) dates = getSummerRateDatesFull();
+    else dates = getPossibleDatesForMonth(monthIdx);
+    if (!dates.length) return null;
+    let done = 0, max = 0;
+    Object.keys(studentsData).forEach(g => {
+        studentsData[g].forEach(n => {
+            const c = countRecordSlots(appState.db.brushing_records[`${g}-${n}`] || {}, dates);
+            done += c.done;
+            max += c.max;
+        });
+    });
+    if (max === 0) return null;
+    return Math.round((done / max) * 100);
+}
+
+function computeTopStudentsForMonth(monthIdx, limit = 5) {
+    let dates;
+    if (isSummerRateMonth(monthIdx)) dates = getSummerRateDatesFull();
+    else dates = getPossibleDatesForMonth(monthIdx);
+    const scores = [];
+    Object.keys(studentsData).forEach(g => {
+        studentsData[g].forEach(name => {
+            const record = appState.db.brushing_records[`${g}-${name}`] || {};
+            let practiceDays = 0;
+            dates.forEach(d => {
+                if (isDayFullyBrushed(record[d], d) || (record[d] === true)) practiceDays++;
+                else if (isMultiSlotDate(d) && dayCompletedSlots(record[d], d) > 0) {
+                    // 부분 실천도 일수로 0. 점수는 칸 기준으로 별도
+                }
+            });
+            const slotScore = countRecordSlots(record, dates).done;
+            scores.push({ grade: g, name, practiceDays, slotScore });
+        });
+    });
+    scores.sort((a, b) => b.slotScore - a.slotScore || b.practiceDays - a.practiceDays || a.name.localeCompare(b.name, 'ko'));
+    if (!scores.length || scores[0].slotScore === 0) return [];
+
+    const ranks = [];
+    let currentRank = 0;
+    let lastScore = null;
+    let placed = 0;
+    for (const s of scores) {
+        if (s.slotScore === 0) break;
+        if (lastScore === null || s.slotScore !== lastScore) {
+            currentRank = placed + 1;
+            lastScore = s.slotScore;
+            if (currentRank > limit) break;
+            ranks.push({ rank: currentRank, names: [s.name], score: s.slotScore });
+        } else {
+            ranks[ranks.length - 1].names.push(s.name);
+        }
+        placed++;
+    }
+    return ranks.filter(r => r.rank <= limit);
+}
+
+function renderHallOfFame() {
+    if (!el.hofWinners) return;
+    const monthIdx = getLastCompletedMonthIndex();
+    const monthNames = ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"];
+    let ranks = [];
+    let label = `지난 달 (${monthNames[monthIdx]}) 우수 실천자`;
+
+    if (HISTORICAL_HALL_OF_FAME[monthIdx]) {
+        const hist = HISTORICAL_HALL_OF_FAME[monthIdx];
+        label = `${hist.monthLabel} 우수 실천자`;
+        ranks = hist.ranks;
+    } else {
+        ranks = computeTopStudentsForMonth(monthIdx, 5);
+        label = `${monthNames[monthIdx]} 우수 실천자 (1~5등)`;
+    }
+
+    if (el.hofMonthLabel) el.hofMonthLabel.textContent = label;
+
+    const medals = { 1: "🥇", 2: "🥈", 3: "🥉", 4: "4️⃣", 5: "5️⃣" };
+    if (!ranks.length) {
+        el.hofWinners.innerHTML = '<p class="text-center text-gray-400 text-sm">아직 지난 달 기록이 없어요.</p>';
+    } else {
+        el.hofWinners.innerHTML = ranks.map(r => {
+            const medal = medals[r.rank] || `${r.rank}등`;
+            return `<div class="bg-white/70 rounded-xl px-3 py-2 border border-amber-200"><span class="font-bold text-amber-800">${medal} ${r.rank}등</span> <span class="text-slate-700">${r.names.join(', ')}</span></div>`;
+        }).join('');
+    }
+
+    const rate = computeSchoolRateForMonth(monthIdx);
+    if (el.hofSchoolRate) {
+        el.hofSchoolRate.textContent = rate === null ? (HISTORICAL_HALL_OF_FAME[monthIdx] ? "—" : "0%") : `${rate}%`;
+    }
 }
