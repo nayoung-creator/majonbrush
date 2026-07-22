@@ -68,9 +68,9 @@ const HISTORICAL_HALL_OF_FAME = {
     5: {
         monthLabel: "2026년 6월",
         ranks: [
-            { rank: 1, names: ["안이정", "이은우"] },
-            { rank: 2, names: ["장치원"] },
-            { rank: 3, names: ["노지호", "장호원", "장태평"] }
+            { rank: 1, names: ["안이정", "이은우"], done: 20, total: 21 },
+            { rank: 2, names: ["장치원"], done: 19, total: 21 },
+            { rank: 3, names: ["노지호", "장호원", "장태평"], done: 18, total: 21 }
         ]
     },
     6: {
@@ -1378,7 +1378,11 @@ function computeTopStudentsForMonth(monthIdx, limit = 5) {
             currentRank = placed + 1;
             lastScore = s.slotScore;
             if (currentRank > limit) break;
-            ranks.push({ rank: currentRank, names: [s.name], score: s.slotScore });
+            let periodMax = 0;
+            dates.forEach(d => { periodMax += dayMaxSlots(d); });
+            const doneVal = isSummerRateMonth(monthIdx) ? s.slotScore : s.practiceDays;
+            const totalVal = isSummerRateMonth(monthIdx) ? periodMax : dates.length;
+            ranks.push({ rank: currentRank, names: [s.name], score: s.slotScore, done: doneVal, total: totalVal });
         } else {
             ranks[ranks.length - 1].names.push(s.name);
         }
@@ -1411,7 +1415,13 @@ function renderHallOfFame() {
     } else {
         el.hofWinners.innerHTML = ranks.map(r => {
             const medal = medals[r.rank] || `${r.rank}등`;
-            return `<div class="bg-white/70 rounded-xl px-3 py-2 border border-amber-200"><span class="font-bold text-amber-800">${medal} ${r.rank}등</span> <span class="text-slate-700">${r.names.join(', ')}</span></div>`;
+            const namesHtml = r.names.map(name => {
+                if (r.done != null && r.total != null) {
+                    return `${name} <span class="text-teal-600 font-sans font-bold text-sm">${r.done}/${r.total}</span>`;
+                }
+                return name;
+            }).join(', ');
+            return `<div class="bg-white/70 rounded-xl px-3 py-2 border border-amber-200"><span class="font-bold text-amber-800">${medal} ${r.rank}등</span> <span class="text-slate-700">${namesHtml}</span></div>`;
         }).join('');
     }
 
