@@ -884,6 +884,14 @@ function countRecordSlots(record, dates) {
     return { done, max };
 }
 
+function countRecordPracticeDays(record, dates) {
+    let done = 0;
+    dates.forEach(d => {
+        if (isDayFullyBrushed(record[d], d) || record[d] === true) done++;
+    });
+    return { done, max: dates.length };
+}
+
 function updateClassStatsWidget() {
     const grade = appState.currentStudent.grade;
     const classmates = studentsData[grade] || [];
@@ -906,11 +914,12 @@ function updateClassStatsWidget() {
         el.classRateToday.className = "text-xl font-bold text-teal-600 font-sans";
     }
 
-    const periodDates = getRatePeriodDatesUntilToday(appState.selectedMonthIndex);
-    if (periodDates.length > 0) {
+    // 이번 달 / 지난 달 반 실천율은 항상 해당 월 기준(1일~오늘, 일수 대비)
+    const monthDates = getEligibleDatesUntilToday(appState.selectedMonthIndex);
+    if (monthDates.length > 0) {
         let totalDone = 0, totalMax = 0;
         classmates.forEach(name => {
-            const c = countRecordSlots(appState.db.brushing_records[`${grade}-${name}`] || {}, periodDates);
+            const c = countRecordPracticeDays(appState.db.brushing_records[`${grade}-${name}`] || {}, monthDates);
             totalDone += c.done;
             totalMax += c.max;
         });
@@ -921,13 +930,11 @@ function updateClassStatsWidget() {
 
     if (appState.selectedMonthIndex > 4) {
         const lastIdx = appState.selectedMonthIndex - 1;
-        let lastDates;
-        if (isSummerRateMonth(lastIdx)) lastDates = getSummerRateDatesFull();
-        else lastDates = getPossibleDatesForMonth(lastIdx);
+        const lastDates = getPossibleDatesForMonth(lastIdx);
         if (lastDates.length > 0) {
             let totalDone = 0, totalMax = 0;
             classmates.forEach(name => {
-                const c = countRecordSlots(appState.db.brushing_records[`${grade}-${name}`] || {}, lastDates);
+                const c = countRecordPracticeDays(appState.db.brushing_records[`${grade}-${name}`] || {}, lastDates);
                 totalDone += c.done;
                 totalMax += c.max;
             });
@@ -941,30 +948,39 @@ function updateClassStatsWidget() {
 }
 
 function calculateIndividualStats() {
-    const eligibleDates = getRatePeriodDatesUntilToday(appState.selectedMonthIndex);
     const monthNames = ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"];
-    el.myRateTitle.textContent = isSummerRateMonth(appState.selectedMonthIndex)
+    const useSummerMyRate = isSummerRateMonth(appState.selectedMonthIndex);
+    // 여름방학 기간 나의 실천율만 여름 기간(7/25~)으로 계산. 반/학교 실천율은 해당 월 기준.
+    const myDates = useSummerMyRate
+        ? getRatePeriodDatesUntilToday(appState.selectedMonthIndex)
+        : getEligibleDatesUntilToday(appState.selectedMonthIndex);
+    const monthDates = getEligibleDatesUntilToday(appState.selectedMonthIndex);
+
+    el.myRateTitle.textContent = useSummerMyRate
         ? "여름방학 기간 나의 실천율"
         : `${monthNames[appState.selectedMonthIndex]} 나의 실천율`;
 
+    const streakDates = useSummerMyRate && myDates.length > 0 ? myDates : monthDates;
     let currentStreak = 0;
-    if (eligibleDates.length > 0) {
-        let checkStartIndex = eligibleDates.length - 1;
-        const lastDate = eligibleDates[eligibleDates.length - 1];
-        const prevDate = eligibleDates.length > 1 ? eligibleDates[eligibleDates.length - 2] : null;
+    if (streakDates.length > 0) {
+        let checkStartIndex = streakDates.length - 1;
+        const lastDate = streakDates[streakDates.length - 1];
+        const prevDate = streakDates.length > 1 ? streakDates[streakDates.length - 2] : null;
         const lastChecked = isDayFullyBrushed(appState.activeRecord[lastDate], lastDate);
         const prevChecked = prevDate ? isDayFullyBrushed(appState.activeRecord[prevDate], prevDate) : false;
         if (lastChecked || prevChecked) {
-            if (!lastChecked) checkStartIndex = eligibleDates.length - 2;
+            if (!lastChecked) checkStartIndex = streakDates.length - 2;
             for (let i = checkStartIndex; i >= 0; i--) {
-                if (isDayFullyBrushed(appState.activeRecord[eligibleDates[i]], eligibleDates[i])) currentStreak++;
+                if (isDayFullyBrushed(appState.activeRecord[streakDates[i]], streakDates[i])) currentStreak++;
                 else break;
             }
         }
     }
     el.statStreak.textContent = `${currentStreak}일`;
 
-    const myCount = countRecordSlots(appState.activeRecord, eligibleDates);
+    const myCount = useSummerMyRate
+        ? countRecordSlots(appState.activeRecord, myDates)
+        : countRecordPracticeDays(appState.activeRecord, myDates);
     const myRatePercent = myCount.max > 0 ? Math.round((myCount.done / myCount.max) * 100) : 0;
     el.statMyRate.textContent = `${myRatePercent}%`;
     el.barMyRate.style.width = `${myRatePercent}%`;
@@ -973,7 +989,7 @@ function calculateIndividualStats() {
     const classmates = studentsData[grade] || [];
     let totalClassDone = 0, totalClassMax = 0;
     classmates.forEach(name => {
-        const c = countRecordSlots(appState.db.brushing_records[`${grade}-${name}`] || {}, eligibleDates);
+        const c = countRecordPracticeDays(appState.db.brushing_records[`${grade}-${name}`] || {}, monthDates);
         totalClassDone += c.done;
         totalClassMax += c.max;
     });
@@ -984,7 +1000,7 @@ function calculateIndividualStats() {
     let totalSchoolDone = 0, totalSchoolMax = 0;
     Object.keys(studentsData).forEach(g => {
         studentsData[g].forEach(n => {
-            const c = countRecordSlots(appState.db.brushing_records[`${g}-${n}`] || {}, eligibleDates);
+            const c = countRecordPracticeDays(appState.db.brushing_records[`${g}-${n}`] || {}, monthDates);
             totalSchoolDone += c.done;
             totalSchoolMax += c.max;
         });
