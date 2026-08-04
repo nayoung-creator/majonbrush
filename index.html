@@ -29,7 +29,7 @@
         }
         .bounce-twice { animation: bounceTwice 1.2s ease-out 1; }
 
-        /* [추가] 모바일 및 전용 브라우저 터치 스크롤 부드럽게 구현 */
+        /* 모바일 및 전용 브라우저 터치 스크롤 부드럽게 구현 */
         html {
             scroll-behavior: smooth;
         }
@@ -38,7 +38,7 @@
             -webkit-overflow-scrolling: touch;
         }
 
-        /* [추가] 화면 높이가 좁은 환경(모바일 가로모드 포함) 및 소형 기기 스크롤 최적화 */
+        /* 화면 높이가 좁은 환경(모바일 가로모드 포함) 및 소형 기기 스크롤 최적화 */
         @media (max-height: 768px), (max-width: 640px) {
             body {
                 height: auto !important;
