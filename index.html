@@ -28,28 +28,6 @@
             40%, 80% { transform: translateY(0) scale(1); }
         }
         .bounce-twice { animation: bounceTwice 1.2s ease-out 1; }
-        <style>
-        body { font-family: 'Jua', sans-serif; user-select: none; -webkit-user-select: none; }
-        @keyframes fall {
-            0% { transform: translateY(-50px) rotate(0deg); opacity: 1; }
-            100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
-        }
-        .confetti {
-            position: absolute; width: 12px; height: 12px; border-radius: 50%;
-            animation: fall 3s linear infinite; pointer-events: none; z-index: 60;
-        }
-        @keyframes float {
-            0% { transform: translateY(0px) rotate(0deg); }
-            50% { transform: translateY(-10px) rotate(3deg); }
-            100% { transform: translateY(0px) rotate(0deg); }
-        }
-        .floating-tooth { animation: float 3s ease-in-out infinite; }
-        @keyframes bounceTwice {
-            0%, 100% { transform: translateY(0) scale(1); }
-            20%, 60% { transform: translateY(-20px) scale(1.02); }
-            40%, 80% { transform: translateY(0) scale(1); }
-        }
-        .bounce-twice { animation: bounceTwice 1.2s ease-out 1; }
 
         /* [추가] 모바일 및 전용 브라우저 터치 스크롤 부드럽게 구현 */
         html {
@@ -82,7 +60,6 @@
                 overflow: visible !important;
             }
         }
-    </style>
     </style>
 </head>
 <body class="bg-gradient-to-br from-blue-50 to-emerald-50 w-screen h-screen flex items-center justify-center overflow-hidden p-2 md:p-6">
