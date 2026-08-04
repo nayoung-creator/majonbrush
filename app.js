@@ -67,7 +67,7 @@ const SUMMER_RATE_END = "2026-08-31";
 const HISTORICAL_HALL_OF_FAME = {
     5: {
         monthLabel: "2026년 6월",
-        schoolRate: 46, // June 실천율 추가
+        schoolRate: 46,
         ranks: [
             { rank: 1, names: ["안이정", "이은우"], done: 20, total: 21 },
             { rank: 2, names: ["장치원"], done: 19, total: 21 },
@@ -76,7 +76,7 @@ const HISTORICAL_HALL_OF_FAME = {
     },
     6: {
         monthLabel: "2026년 7월",
-        schoolRate: 46, // 지난 달(7월) 우리학교 실천율을 46%로 설정
+        schoolRate: 46,
         ranks: [
             { rank: 1, names: ["노지호", "정윤하", "노연호", "장치원"] },
             { rank: 2, names: ["이서하"] },
@@ -893,10 +893,12 @@ function countRecordPracticeDays(record, dates) {
     });
     return { done, max: dates.length };
 }
+
 // 해당 월이 여름방학 기간(멀티 슬롯)인지 여부에 따라 알맞은 계산 방식을 선택하는 함수
 function getMonthCountFunc(monthIndex) {
     return isSummerRateMonth(monthIndex) ? countRecordSlots : countRecordPracticeDays;
 }
+
 function updateClassStatsWidget() {
     const grade = appState.currentStudent.grade;
     const classmates = studentsData[grade] || [];
@@ -953,6 +955,7 @@ function updateClassStatsWidget() {
         el.classRateLastMonth.textContent = "시작 전";
     }
 }
+
 function calculateIndividualStats() {
     const monthNames = ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"];
     const useSummerMyRate = isSummerRateMonth(appState.selectedMonthIndex);
@@ -1257,6 +1260,7 @@ function syncDefaultMonth() {
     el.calendarMonthSelect.value = appState.selectedMonthIndex;
 }
 
+// 비밀번호 원형 점 업데이트
 function updatePwDots() {
     el.pwDots.forEach((dot, idx) => {
         if (idx < appState.enteredPin.length) {
@@ -1458,3 +1462,4 @@ function renderHallOfFame() {
             el.hofSchoolRate.textContent = rate === null ? "0%" : `${rate}%`;
         }
     }
+}
