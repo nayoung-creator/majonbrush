@@ -28,6 +28,61 @@
             40%, 80% { transform: translateY(0) scale(1); }
         }
         .bounce-twice { animation: bounceTwice 1.2s ease-out 1; }
+        <style>
+        body { font-family: 'Jua', sans-serif; user-select: none; -webkit-user-select: none; }
+        @keyframes fall {
+            0% { transform: translateY(-50px) rotate(0deg); opacity: 1; }
+            100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+        }
+        .confetti {
+            position: absolute; width: 12px; height: 12px; border-radius: 50%;
+            animation: fall 3s linear infinite; pointer-events: none; z-index: 60;
+        }
+        @keyframes float {
+            0% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-10px) rotate(3deg); }
+            100% { transform: translateY(0px) rotate(0deg); }
+        }
+        .floating-tooth { animation: float 3s ease-in-out infinite; }
+        @keyframes bounceTwice {
+            0%, 100% { transform: translateY(0) scale(1); }
+            20%, 60% { transform: translateY(-20px) scale(1.02); }
+            40%, 80% { transform: translateY(0) scale(1); }
+        }
+        .bounce-twice { animation: bounceTwice 1.2s ease-out 1; }
+
+        /* [추가] 모바일 및 전용 브라우저 터치 스크롤 부드럽게 구현 */
+        html {
+            scroll-behavior: smooth;
+        }
+        .overflow-y-auto, .overflow-auto {
+            scroll-behavior: smooth;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        /* [추가] 화면 높이가 좁은 환경(모바일 가로모드 포함) 및 소형 기기 스크롤 최적화 */
+        @media (max-height: 768px), (max-width: 640px) {
+            body {
+                height: auto !important;
+                min-height: 100vh;
+                overflow-y: auto !important;
+                align-items: flex-start !important;
+                padding: 0.5rem !important;
+            }
+            #app-container {
+                height: auto !important;
+                max-height: none !important;
+                min-height: 650px;
+                overflow: visible !important;
+            }
+            #screen-calendar, #screen-admin, #screen-password {
+                overflow: visible !important;
+            }
+            #screen-calendar > .flex-1 {
+                overflow: visible !important;
+            }
+        }
+    </style>
     </style>
 </head>
 <body class="bg-gradient-to-br from-blue-50 to-emerald-50 w-screen h-screen flex items-center justify-center overflow-hidden p-2 md:p-6">
