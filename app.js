@@ -67,6 +67,7 @@ const SUMMER_RATE_END = "2026-08-31";
 const HISTORICAL_HALL_OF_FAME = {
     5: {
         monthLabel: "2026년 6월",
+        schoolRate: 46, // June 실천율 추가
         ranks: [
             { rank: 1, names: ["안이정", "이은우"], done: 20, total: 21 },
             { rank: 2, names: ["장치원"], done: 19, total: 21 },
@@ -75,6 +76,7 @@ const HISTORICAL_HALL_OF_FAME = {
     },
     6: {
         monthLabel: "2026년 7월",
+        schoolRate: 46, // 지난 달(7월) 우리학교 실천율을 46%로 설정
         ranks: [
             { rank: 1, names: ["노지호", "정윤하", "노연호", "장치원"] },
             { rank: 2, names: ["이서하"] },
@@ -891,7 +893,10 @@ function countRecordPracticeDays(record, dates) {
     });
     return { done, max: dates.length };
 }
-
+// 해당 월이 여름방학 기간(멀티 슬롯)인지 여부에 따라 알맞은 계산 방식을 선택하는 함수
+function getMonthCountFunc(monthIndex) {
+    return isSummerRateMonth(monthIndex) ? countRecordSlots : countRecordPracticeDays;
+}
 function updateClassStatsWidget() {
     const grade = appState.currentStudent.grade;
     const classmates = studentsData[grade] || [];
@@ -914,12 +919,13 @@ function updateClassStatsWidget() {
         el.classRateToday.className = "text-xl font-bold text-teal-600 font-sans";
     }
 
-    // 이번 달 / 지난 달 반 실천율은 항상 해당 월 기준(1일~오늘, 일수 대비)
+    // 이번 달 / 지난 달 반 실천율 계산 (여름방학 기간에는 슬롯 단위 계산법 적용)
     const monthDates = getEligibleDatesUntilToday(appState.selectedMonthIndex);
+    const countFunc = getMonthCountFunc(appState.selectedMonthIndex);
     if (monthDates.length > 0) {
         let totalDone = 0, totalMax = 0;
         classmates.forEach(name => {
-            const c = countRecordPracticeDays(appState.db.brushing_records[`${grade}-${name}`] || {}, monthDates);
+            const c = countFunc(appState.db.brushing_records[`${grade}-${name}`] || {}, monthDates);
             totalDone += c.done;
             totalMax += c.max;
         });
@@ -931,10 +937,11 @@ function updateClassStatsWidget() {
     if (appState.selectedMonthIndex > 4) {
         const lastIdx = appState.selectedMonthIndex - 1;
         const lastDates = getPossibleDatesForMonth(lastIdx);
+        const lastCountFunc = getMonthCountFunc(lastIdx);
         if (lastDates.length > 0) {
             let totalDone = 0, totalMax = 0;
             classmates.forEach(name => {
-                const c = countRecordPracticeDays(appState.db.brushing_records[`${grade}-${name}`] || {}, lastDates);
+                const c = lastCountFunc(appState.db.brushing_records[`${grade}-${name}`] || {}, lastDates);
                 totalDone += c.done;
                 totalMax += c.max;
             });
@@ -946,11 +953,9 @@ function updateClassStatsWidget() {
         el.classRateLastMonth.textContent = "시작 전";
     }
 }
-
 function calculateIndividualStats() {
     const monthNames = ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"];
     const useSummerMyRate = isSummerRateMonth(appState.selectedMonthIndex);
-    // 여름방학 기간 나의 실천율만 여름 기간(7/25~)으로 계산. 반/학교 실천율은 해당 월 기준.
     const myDates = useSummerMyRate
         ? getRatePeriodDatesUntilToday(appState.selectedMonthIndex)
         : getEligibleDatesUntilToday(appState.selectedMonthIndex);
@@ -988,8 +993,12 @@ function calculateIndividualStats() {
     const grade = appState.currentStudent.grade;
     const classmates = studentsData[grade] || [];
     let totalClassDone = 0, totalClassMax = 0;
+    
+    // 여름방학(멀티 슬롯)에는 슬롯 방식의 카운트 함수 사용
+    const countFunc = getMonthCountFunc(appState.selectedMonthIndex);
+
     classmates.forEach(name => {
-        const c = countRecordPracticeDays(appState.db.brushing_records[`${grade}-${name}`] || {}, monthDates);
+        const c = countFunc(appState.db.brushing_records[`${grade}-${name}`] || {}, monthDates);
         totalClassDone += c.done;
         totalClassMax += c.max;
     });
@@ -1000,7 +1009,7 @@ function calculateIndividualStats() {
     let totalSchoolDone = 0, totalSchoolMax = 0;
     Object.keys(studentsData).forEach(g => {
         studentsData[g].forEach(n => {
-            const c = countRecordPracticeDays(appState.db.brushing_records[`${g}-${n}`] || {}, monthDates);
+            const c = countFunc(appState.db.brushing_records[`${g}-${n}`] || {}, monthDates);
             totalSchoolDone += c.done;
             totalSchoolMax += c.max;
         });
@@ -1443,6 +1452,9 @@ function renderHallOfFame() {
 
     const rate = computeSchoolRateForMonth(monthIdx);
     if (el.hofSchoolRate) {
-        el.hofSchoolRate.textContent = rate === null ? (HISTORICAL_HALL_OF_FAME[monthIdx] ? "—" : "0%") : `${rate}%`;
+        if (HISTORICAL_HALL_OF_FAME[monthIdx] && HISTORICAL_HALL_OF_FAME[monthIdx].schoolRate !== undefined) {
+            el.hofSchoolRate.textContent = `${HISTORICAL_HALL_OF_FAME[monthIdx].schoolRate}%`;
+        } else {
+            el.hofSchoolRate.textContent = rate === null ? "0%" : `${rate}%`;
+        }
     }
-}
