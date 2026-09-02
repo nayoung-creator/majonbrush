@@ -1358,17 +1358,26 @@ function getLastCompletedMonthIndex() {
     return m - 1;
 }
 
+const FULL_PARTICIPATION_GRADES = new Set(["유치원", "1학년"]);
+
 function computeSchoolRateForMonth(monthIdx) {
-    let dates;
-    if (isSummerRateMonth(monthIdx)) dates = getSummerRateDatesFull();
-    else dates = getPossibleDatesForMonth(monthIdx);
+    // 초기 화면 '지난 달 우리 학교 실천율'은 해당 달력 월만 사용 (여름 합산 기간 X)
+    const dates = getPossibleDatesForMonth(monthIdx);
     if (!dates.length) return null;
+    const countFunc = getMonthCountFunc(monthIdx);
     let done = 0, max = 0;
     Object.keys(studentsData).forEach(g => {
         studentsData[g].forEach(n => {
-            const c = countRecordSlots(appState.db.brushing_records[`${g}-${n}`] || {}, dates);
-            done += c.done;
-            max += c.max;
+            if (FULL_PARTICIPATION_GRADES.has(g)) {
+                // 유치원·1학년은 다른 방법으로 참여 → 100%로 가정
+                const full = countFunc({}, dates).max;
+                done += full;
+                max += full;
+            } else {
+                const c = countFunc(appState.db.brushing_records[`${g}-${n}`] || {}, dates);
+                done += c.done;
+                max += c.max;
+            }
         });
     });
     if (max === 0) return null;
