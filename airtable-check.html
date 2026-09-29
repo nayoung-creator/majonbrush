@@ -81,6 +81,10 @@
                     line('<p><b>원인:</b> Base ID 또는 <u>테이블 이름</u> 오류</p>');
                     line('<p><b>해결:</b> Airtable 왼쪽 하단 표 이름을 config.js 의 AIRTABLE_TABLE_NAME 과 똑같이 맞추기</p>');
                     line('<p>열 이름은 <b>Key</b>, <b>Value</b> (대소문자 포함)</p>');
+                } else if (res.status === 429) {
+                    line('<p><b>원인:</b> Airtable 요청이 너무 많음 (무료 플랜 초당 약 5회 제한)</p>');
+                    line('<p><b>해결:</b> 30~60초 기다린 뒤 다시 테스트하세요. 여러 기기/탭을 동시에 열어두면 더 잘 납니다.</p>');
+                    line('<p>앱은 잠시 후 자동 재시도합니다. 기록은 브라우저에 임시 저장됩니다.</p>');
                 } else {
                     line(`<p class="text-xs text-gray-500 break-all">${text.slice(0, 200)}</p>`);
                 }

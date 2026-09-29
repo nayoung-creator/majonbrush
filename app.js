@@ -1,5 +1,9 @@
 const ADMIN_PASSWORD = "0625";
-const SYNC_INTERVAL_MS = 30000;
+const SYNC_INTERVAL_MS = 90000;
+const AIRTABLE_MIN_GAP_MS = 250;
+const SYNC_MIN_GAP_MS = 20000;
+const SAVE_DEBOUNCE_MS = 2000;
+const AIRTABLE_MAX_RETRIES = 5;
 
 const cfg = window.APP_CONFIG || {};
 const AIRTABLE_TOKEN = (cfg.AIRTABLE_TOKEN || "").trim();
@@ -212,6 +216,52 @@ function loadLocalDatabase() {
 }
 loadLocalDatabase();
 
+let airtableRecordIds = {};
+let lastSyncAt = 0;
+let syncInFlight = null;
+let airtableChain = Promise.resolve();
+let lastAirtableCallAt = 0;
+const pendingSaveTimers = {};
+const pendingSaveWaiters = {};
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function enqueueAirtable(task) {
+    const run = airtableChain.then(task, task);
+    airtableChain = run.catch(() => {});
+    return run;
+}
+
+async function airtableFetch(url, options = {}, retries = AIRTABLE_MAX_RETRIES) {
+    return enqueueAirtable(async () => {
+        let attempt = 0;
+        while (true) {
+            const wait = AIRTABLE_MIN_GAP_MS - (Date.now() - lastAirtableCallAt);
+            if (wait > 0) await sleep(wait);
+            lastAirtableCallAt = Date.now();
+            let response;
+            try {
+                response = await fetch(url, options);
+            } catch (e) {
+                if (attempt >= retries) throw e;
+                attempt++;
+                await sleep(Math.min(8000, 500 * Math.pow(2, attempt)));
+                continue;
+            }
+            if (response.status !== 429) return response;
+            attempt++;
+            if (attempt > retries) return response;
+            const retryAfter = Number(response.headers.get('Retry-After'));
+            const backoff = Number.isFinite(retryAfter) && retryAfter > 0
+                ? retryAfter * 1000
+                : Math.min(15000, 1000 * Math.pow(2, attempt));
+            await sleep(backoff);
+        }
+    });
+}
+
 function deepMergeBrushingRecords(local, remote) {
     const merged = JSON.parse(JSON.stringify(local || {}));
     Object.keys(remote || {}).forEach(studentKey => {
@@ -243,6 +293,14 @@ function persistLocalDatabase() {
     localStorage.setItem('brushing_pws', JSON.stringify(appState.db.brushing_pws));
     localStorage.setItem('brushing_praises', JSON.stringify(appState.db.brushing_praises));
 }
+
+window.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && pendingSaveTimers.brushing_records) {
+        clearTimeout(pendingSaveTimers.brushing_records);
+        pendingSaveTimers.brushing_records = null;
+        flushSaveToAirtable('brushing_records', appState.db.brushing_records);
+    }
+});
 
 window.addEventListener('DOMContentLoaded', () => {
     el.selectGrade = document.getElementById('select-grade');
@@ -397,10 +455,10 @@ function initApp() {
 
     el.btnSave.addEventListener('click', async () => {
         el.loadingOverlay.classList.remove('hidden');
-        await syncWithAirtable();
+        await syncWithAirtable({ force: true });
         const studentKey = `${appState.currentStudent.grade}-${appState.currentStudent.name}`;
         appState.db.brushing_records[studentKey] = appState.activeRecord;
-        await saveToAirtable('brushing_records', appState.db.brushing_records);
+        await saveToAirtable('brushing_records', appState.db.brushing_records, { immediate: true });
         calculateIndividualStats();
         el.loadingOverlay.classList.add('hidden');
         stopPeriodicSync();
@@ -487,7 +545,8 @@ function stopPeriodicSync() {
     }
 }
 
-async function syncWithAirtable() {
+async function syncWithAirtable(options = {}) {
+    const force = options.force === true;
     const issue = getCloudModeIssue();
     if (issue) {
         appState.connectionIssue = issue;
@@ -498,76 +557,126 @@ async function syncWithAirtable() {
         return false;
     }
 
-    try {
-        const url = airtableTableUrl("?maxRecords=100");
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
-        const response = await fetch(url, {
-            headers: { "Authorization": `Bearer ${AIRTABLE_TOKEN}` },
-            signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-
-        if (response.ok) {
-            const result = await response.json();
-            if (result && result.records) {
-                let tempRecords = {}, tempPws = {}, tempPraises = {};
-                result.records.forEach(rec => {
-                    const { key, val } = readAirtableRecordFields(rec.fields || {});
-                    if (key && val) {
-                        try {
-                            const parsed = JSON.parse(val);
-                            if (key === 'brushing_records') tempRecords = parsed;
-                            if (key === 'brushing_pws') tempPws = parsed;
-                            if (key === 'brushing_praises') tempPraises = parsed;
-                        } catch (e) {
-                            console.error("JSON 파싱 오류:", e);
-                        }
-                    }
-                });
-
-                appState.db.brushing_records = deepMergeBrushingRecords(appState.db.brushing_records, tempRecords);
-                appState.db.brushing_pws = mergeSimpleObjects(appState.db.brushing_pws, tempPws);
-                appState.db.brushing_praises = mergePraises(appState.db.brushing_praises, tempPraises);
-                persistLocalDatabase();
-            }
-            appState.connectionIssue = null;
-            return true;
-        }
-
-        let apiHint = "";
-        try {
-            const errJson = JSON.parse(await response.text());
-            if (errJson.error && errJson.error.message) apiHint = ` (${errJson.error.message})`;
-        } catch (_) { /* ignore */ }
-
-        if (response.status === 401) {
-            appState.connectionIssue = `토큰이 잘못되었거나 만료되었습니다. 새 pat 토큰을 config.js에 넣으세요.${apiHint}`;
-        } else if (response.status === 403) {
-            appState.connectionIssue = `토큰에 이 Base 권한이 없습니다. 토큰 Access에서 Base ID ${AIRTABLE_BASE_ID} 와 같은 Base를 추가하세요.${apiHint}`;
-        } else if (response.status === 404) {
-            appState.connectionIssue = `Base ID 또는 테이블 이름 "${AIRTABLE_TABLE_NAME}" 이 틀렸습니다. Airtable 왼쪽 하단 표 이름과 config.js 를 맞추세요.${apiHint}`;
-        } else {
-            appState.connectionIssue = `Airtable 연결 실패 (HTTP ${response.status})${apiHint}. airtable-check.html 로 확인하세요.`;
-        }
-    } catch (e) {
-        console.warn("에어테이블 통신 지연. 로컬 보존 모드로 작동합니다.", e);
-        if (isFileProtocol) {
-            appState.connectionIssue = "index.html 을 직접 열면 연결되지 않습니다. start.bat 으로 실행하세요.";
-        } else {
-            appState.connectionIssue = "인터넷 연결 또는 Airtable 접속을 확인해 주세요.";
-        }
+    if (!force && lastSyncAt > 0 && (Date.now() - lastSyncAt) < SYNC_MIN_GAP_MS) {
+        return appState.connectionIssue == null;
     }
-    return false;
+    if (syncInFlight) return syncInFlight;
+
+    syncInFlight = (async () => {
+        try {
+            const url = airtableTableUrl("?maxRecords=100");
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 12000);
+            const response = await airtableFetch(url, {
+                headers: { "Authorization": `Bearer ${AIRTABLE_TOKEN}` },
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+
+            if (response.ok) {
+                const result = await response.json();
+                if (result && result.records) {
+                    let tempRecords = {}, tempPws = {}, tempPraises = {};
+                    result.records.forEach(rec => {
+                        const { key, val } = readAirtableRecordFields(rec.fields || {});
+                        if (key && rec.id) airtableRecordIds[key] = rec.id;
+                        if (key && val) {
+                            try {
+                                const parsed = JSON.parse(val);
+                                if (key === 'brushing_records') tempRecords = parsed;
+                                if (key === 'brushing_pws') tempPws = parsed;
+                                if (key === 'brushing_praises') tempPraises = parsed;
+                            } catch (e) {
+                                console.error("JSON 파싱 오류:", e);
+                            }
+                        }
+                    });
+
+                    appState.db.brushing_records = deepMergeBrushingRecords(appState.db.brushing_records, tempRecords);
+                    appState.db.brushing_pws = mergeSimpleObjects(appState.db.brushing_pws, tempPws);
+                    appState.db.brushing_praises = mergePraises(appState.db.brushing_praises, tempPraises);
+                    persistLocalDatabase();
+                }
+                appState.connectionIssue = null;
+                lastSyncAt = Date.now();
+                return true;
+            }
+
+            let apiHint = "";
+            try {
+                const errJson = JSON.parse(await response.text());
+                if (errJson.error && errJson.error.message) apiHint = ` (${errJson.error.message})`;
+            } catch (_) { /* ignore */ }
+
+            if (response.status === 401) {
+                appState.connectionIssue = `토큰이 잘못되었거나 만료되었습니다. 새 pat 토큰을 config.js에 넣으세요.${apiHint}`;
+            } else if (response.status === 403) {
+                appState.connectionIssue = `토큰에 이 Base 권한이 없습니다. 토큰 Access에서 Base ID ${AIRTABLE_BASE_ID} 와 같은 Base를 추가하세요.${apiHint}`;
+            } else if (response.status === 404) {
+                appState.connectionIssue = `Base ID 또는 테이블 이름 "${AIRTABLE_TABLE_NAME}" 이 틀렸습니다. Airtable 왼쪽 하단 표 이름과 config.js 를 맞추세요.${apiHint}`;
+            } else if (response.status === 429) {
+                appState.connectionIssue = "일시적으로 요청이 많아요(HTTP 429). 잠시 후 자동으로 다시 연결합니다.";
+            } else {
+                appState.connectionIssue = `Airtable 연결 실패 (HTTP ${response.status})${apiHint}. airtable-check.html 로 확인하세요.`;
+            }
+        } catch (e) {
+            console.warn("에어테이블 통신 지연. 로컬 보존 모드로 작동합니다.", e);
+            if (isFileProtocol) {
+                appState.connectionIssue = "index.html 을 직접 열면 연결되지 않습니다. start.bat 으로 실행하세요.";
+            } else {
+                appState.connectionIssue = "인터넷 연결 또는 Airtable 접속을 확인해 주세요.";
+            }
+        }
+        return false;
+    })();
+
+    try {
+        return await syncInFlight;
+    } finally {
+        syncInFlight = null;
+    }
 }
 
-async function saveToAirtable(key, data) {
+function scheduleSaveToAirtable(key, data) {
+    return new Promise(resolve => {
+        if (!pendingSaveWaiters[key]) pendingSaveWaiters[key] = [];
+        pendingSaveWaiters[key].push(resolve);
+        if (pendingSaveTimers[key]) clearTimeout(pendingSaveTimers[key]);
+        pendingSaveTimers[key] = setTimeout(async () => {
+            pendingSaveTimers[key] = null;
+            const waiters = pendingSaveWaiters[key] || [];
+            pendingSaveWaiters[key] = [];
+            try {
+                await flushSaveToAirtable(key, appState.db[key]);
+            } finally {
+                waiters.forEach(w => w());
+            }
+        }, SAVE_DEBOUNCE_MS);
+    });
+}
+
+async function saveToAirtable(key, data, options = {}) {
     localStorage.setItem(key, JSON.stringify(data));
     appState.db[key] = data;
     if (!isCloudMode) return;
 
+    const immediate = options.immediate === true || key !== 'brushing_records';
+    if (!immediate) {
+        await scheduleSaveToAirtable(key, data);
+        return;
+    }
+    if (pendingSaveTimers[key]) {
+        clearTimeout(pendingSaveTimers[key]);
+        pendingSaveTimers[key] = null;
+    }
+    await flushSaveToAirtable(key, data);
+}
+
+async function flushSaveToAirtable(key, data) {
+    if (!isCloudMode) return;
     try {
-        await syncWithAirtable();
+        // 최근에 동기화했으면 생략해 429를 줄입니다.
+        await syncWithAirtable({ force: false });
         if (key === 'brushing_records') {
             appState.db.brushing_records = deepMergeBrushingRecords(appState.db.brushing_records, data);
         } else {
@@ -578,28 +687,58 @@ async function saveToAirtable(key, data) {
 
         const fieldKey = getAirtableFieldKeyName();
         const fieldValue = getAirtableFieldValueName();
-        const escapedKey = key.replace(/'/g, "\\'");
-        const selectUrl = `${airtableTableUrl()}?filterByFormula=({${fieldKey}}='${escapedKey}')`;
-        const response = await fetch(selectUrl, { headers: { "Authorization": `Bearer ${AIRTABLE_TOKEN}` } });
-        if (!response.ok) return;
-
-        const result = await response.json();
-        const valueStr = JSON.stringify(mergedData);
         const headers = {
             "Authorization": `Bearer ${AIRTABLE_TOKEN}`,
             "Content-Type": "application/json"
         };
-        const recordFields = { [fieldKey]: key, [fieldValue]: valueStr };
+        const valueStr = JSON.stringify(mergedData);
+        let recordId = airtableRecordIds[key];
 
-        if (result && result.records && result.records.length > 0) {
-            await fetch(`${airtableTableUrl()}/${result.records[0].id}`, {
+        if (!recordId) {
+            const escapedKey = key.replace(/'/g, "\\'");
+            const selectUrl = `${airtableTableUrl()}?filterByFormula=({${fieldKey}}='${escapedKey}')&maxRecords=1`;
+            const response = await airtableFetch(selectUrl, { headers: { "Authorization": `Bearer ${AIRTABLE_TOKEN}` } });
+            if (!response.ok) {
+                if (response.status === 429) {
+                    appState.connectionIssue = "일시적으로 요청이 많아요(HTTP 429). 잠시 후 자동으로 다시 연결합니다.";
+                }
+                return;
+            }
+            const result = await response.json();
+            if (result && result.records && result.records.length > 0) {
+                recordId = result.records[0].id;
+                airtableRecordIds[key] = recordId;
+            }
+        }
+
+        if (recordId) {
+            const patchRes = await airtableFetch(`${airtableTableUrl()}/${recordId}`, {
                 method: "PATCH", headers, body: JSON.stringify({ fields: { [fieldValue]: valueStr } })
             });
+            if (patchRes.status === 404) {
+                delete airtableRecordIds[key];
+                const createRes = await airtableFetch(airtableTableUrl(), {
+                    method: "POST", headers,
+                    body: JSON.stringify({ records: [{ fields: { [fieldKey]: key, [fieldValue]: valueStr } }] })
+                });
+                if (createRes.ok) {
+                    const created = await createRes.json();
+                    if (created.records && created.records[0]) airtableRecordIds[key] = created.records[0].id;
+                }
+            } else if (patchRes.status === 429) {
+                appState.connectionIssue = "일시적으로 요청이 많아요(HTTP 429). 잠시 후 자동으로 다시 연결합니다.";
+            }
         } else {
-            await fetch(airtableTableUrl(), {
+            const createRes = await airtableFetch(airtableTableUrl(), {
                 method: "POST", headers,
-                body: JSON.stringify({ records: [{ fields: recordFields }] })
+                body: JSON.stringify({ records: [{ fields: { [fieldKey]: key, [fieldValue]: valueStr } }] })
             });
+            if (createRes.ok) {
+                const created = await createRes.json();
+                if (created.records && created.records[0]) airtableRecordIds[key] = created.records[0].id;
+            } else if (createRes.status === 429) {
+                appState.connectionIssue = "일시적으로 요청이 많아요(HTTP 429). 잠시 후 자동으로 다시 연결합니다.";
+            }
         }
     } catch (e) {
         console.error("백그라운드 클라우드 기록 저장 실패:", e);
