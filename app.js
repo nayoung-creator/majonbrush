@@ -8,6 +8,8 @@ const AIRTABLE_TIMEOUT_MS = 6000;
 const RECORDS_KEEP_FROM = "2026-08-01";
 const RECORDS_BACKUP_KEY = "brushing_records_backup_20260929";
 const RECORDS_ARCHIVE_UNTIL = "2026-09-29";
+const QUOTA_RESUME_DATE_LABEL = "10월 1일";
+const QUOTA_OFFLINE_MESSAGE = "지금은 오프라인 저장 중이에요. 양치 기록은 이 기기에 저장되며, 10월 1일부터 클라우드 백업이 다시 시작됩니다. 그때 이 기기의 기록도 다시 연동됩니다.";
 
 const cfg = window.APP_CONFIG || {};
 const AIRTABLE_TOKEN = (cfg.AIRTABLE_TOKEN || "").trim();
@@ -279,7 +281,7 @@ async function airtableFetch(url, options = {}, retries = AIRTABLE_MAX_RETRIES) 
             try { bodyText = await response.clone().text(); } catch (_) {}
             if (bodyText.includes("PUBLIC_API_BILLING_LIMIT_EXCEEDED") || bodyText.includes("billing plan limit")) {
                 appState.airtableQuotaExceeded = true;
-                appState.connectionIssue = "이번 달 Airtable API 한도에 도달했어요. 기록은 이 기기에 저장되며, 다음 달 한도 리셋 또는 요금제 상향 후 다시 클라우드 동기화됩니다.";
+                appState.connectionIssue = QUOTA_OFFLINE_MESSAGE;
                 stopPeriodicSync();
                 return response;
             }
@@ -346,7 +348,7 @@ function prepareLocalRecords() {
     }
     if (sessionStorage.getItem('airtableQuotaExceeded') === '1') {
         appState.airtableQuotaExceeded = true;
-        appState.connectionIssue = "이번 달 Airtable API 한도에 도달했어요. 기록은 이 기기에 저장되며, 다음 달 한도 리셋 또는 요금제 상향 후 다시 클라우드 동기화됩니다.";
+        appState.connectionIssue = QUOTA_OFFLINE_MESSAGE;
     }
 }
 prepareLocalRecords();
@@ -435,6 +437,8 @@ window.addEventListener('DOMContentLoaded', () => {
     el.connectionStatusText = document.getElementById('connection-status-text');
     el.connectionHelpBanner = document.getElementById('connection-help-banner');
     el.connectionHelpText = document.getElementById('connection-help-text');
+    el.connectionHelpTitle = document.getElementById('connection-help-title');
+    el.connectionHelpLink = document.getElementById('connection-help-link');
     el.loadingOverlay = document.getElementById('loading-overlay');
     el.hofMonthLabel = document.getElementById('hof-month-label');
     el.hofWinners = document.getElementById('hof-winners');
@@ -747,7 +751,7 @@ async function syncWithAirtable(options = {}) {
                 if (errJson.errors && errJson.errors[0] && errJson.errors[0].error === 'PUBLIC_API_BILLING_LIMIT_EXCEEDED') {
                     appState.airtableQuotaExceeded = true;
                     sessionStorage.setItem('airtableQuotaExceeded', '1');
-                    appState.connectionIssue = "이번 달 Airtable API 한도에 도달했어요. 기록은 이 기기에 저장되며, 다음 달 한도 리셋 또는 요금제 상향 후 다시 클라우드 동기화됩니다.";
+                    appState.connectionIssue = QUOTA_OFFLINE_MESSAGE;
                     stopPeriodicSync();
                     return false;
                 }
@@ -763,7 +767,7 @@ async function syncWithAirtable(options = {}) {
                 if (bodyText.includes('PUBLIC_API_BILLING_LIMIT_EXCEEDED') || bodyText.includes('billing plan limit')) {
                     appState.airtableQuotaExceeded = true;
                     sessionStorage.setItem('airtableQuotaExceeded', '1');
-                    appState.connectionIssue = "이번 달 Airtable API 한도에 도달했어요. 기록은 이 기기에 저장되며, 다음 달 한도 리셋 또는 요금제 상향 후 다시 클라우드 동기화됩니다.";
+                    appState.connectionIssue = QUOTA_OFFLINE_MESSAGE;
                     stopPeriodicSync();
                 } else {
                     appState.connectionIssue = "일시적으로 요청이 많아요(HTTP 429). 잠시 후 다시 시도해 주세요. 기록은 이 기기에 저장됩니다.";
@@ -1549,21 +1553,40 @@ function updateConnectionBadge(status) {
     if (!el.connectionStatusBadge || !el.connectionStatusText) return;
 
     const issue = appState.connectionIssue || getCloudModeIssue();
+    const quotaOffline = appState.airtableQuotaExceeded === true;
 
-    if (status === null) {
+    if (status === null && !quotaOffline) {
         el.connectionStatusBadge.className = "flex items-center gap-1.5 bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-xs font-bold border";
         el.connectionStatusText.textContent = "연결 중...";
-    } else if (status === true) {
+        return;
+    }
+
+    if (status === true && !quotaOffline) {
         el.connectionStatusBadge.className = "flex items-center gap-1.5 bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold border border-emerald-300 animate-pulse";
         el.connectionStatusText.textContent = "● 에어테이블 연결됨";
         if (el.connectionHelpBanner) el.connectionHelpBanner.classList.add('hidden');
-    } else {
-        el.connectionStatusBadge.className = "flex items-center gap-1.5 bg-slate-100 text-slate-500 px-3 py-1 rounded-full text-xs font-bold border border-slate-300";
-        el.connectionStatusText.textContent = issue ? "● 연결 안 됨" : "● 로컬 저장 모드";
-        if (el.connectionHelpBanner && el.connectionHelpText && issue) {
+        return;
+    }
+
+    if (quotaOffline) {
+        el.connectionStatusBadge.className = "flex items-center gap-1.5 bg-amber-100 text-amber-800 px-3 py-1 rounded-full text-xs font-bold border border-amber-300";
+        el.connectionStatusText.textContent = "● 오프라인 저장 중";
+        if (el.connectionHelpBanner && el.connectionHelpText) {
             el.connectionHelpBanner.classList.remove('hidden');
-            el.connectionHelpText.textContent = issue;
+            if (el.connectionHelpTitle) el.connectionHelpTitle.textContent = "📴 오프라인 저장 중";
+            el.connectionHelpText.textContent = QUOTA_OFFLINE_MESSAGE;
+            if (el.connectionHelpLink) el.connectionHelpLink.classList.add('hidden');
         }
+        return;
+    }
+
+    el.connectionStatusBadge.className = "flex items-center gap-1.5 bg-slate-100 text-slate-500 px-3 py-1 rounded-full text-xs font-bold border border-slate-300";
+    el.connectionStatusText.textContent = issue ? "● 연결 안 됨" : "● 로컬 저장 모드";
+    if (el.connectionHelpBanner && el.connectionHelpText && issue) {
+        el.connectionHelpBanner.classList.remove('hidden');
+        if (el.connectionHelpTitle) el.connectionHelpTitle.textContent = "⚠️ 클라우드 연결이 안 되고 있어요";
+        el.connectionHelpText.textContent = issue;
+        if (el.connectionHelpLink) el.connectionHelpLink.classList.remove('hidden');
     }
 }
 
