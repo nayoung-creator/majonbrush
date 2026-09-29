@@ -1,9 +1,13 @@
 const ADMIN_PASSWORD = "0625";
-const SYNC_INTERVAL_MS = 90000;
-const AIRTABLE_MIN_GAP_MS = 250;
-const SYNC_MIN_GAP_MS = 20000;
-const SAVE_DEBOUNCE_MS = 2000;
-const AIRTABLE_MAX_RETRIES = 5;
+const SYNC_INTERVAL_MS = 180000;
+const AIRTABLE_MIN_GAP_MS = 300;
+const SYNC_MIN_GAP_MS = 60000;
+const SAVE_DEBOUNCE_MS = 2500;
+const AIRTABLE_MAX_RETRIES = 1;
+const AIRTABLE_TIMEOUT_MS = 6000;
+const RECORDS_KEEP_FROM = "2026-08-01";
+const RECORDS_BACKUP_KEY = "brushing_records_backup_20260929";
+const RECORDS_ARCHIVE_UNTIL = "2026-09-29";
 
 const cfg = window.APP_CONFIG || {};
 const AIRTABLE_TOKEN = (cfg.AIRTABLE_TOKEN || "").trim();
@@ -85,6 +89,17 @@ const HISTORICAL_HALL_OF_FAME = {
             { rank: 1, names: ["노지호", "정윤하", "노연호", "장치원"] },
             { rank: 2, names: ["이서하"] },
             { rank: 3, names: ["신은하", "유민호", "최한결", "이수연", "노건호", "장태평"] }
+        ]
+    },
+    7: {
+        monthLabel: "2026년 8월",
+        schoolRate: 44,
+        ranks: [
+            { rank: 1, names: ["장태평"], done: 49, total: 82 },
+            { rank: 2, names: ["안이정"], done: 20, total: 82 },
+            { rank: 3, names: ["이수연"], done: 13, total: 82 },
+            { rank: 4, names: ["신은하"], done: 12, total: 82 },
+            { rank: 5, names: ["노건호", "노지호", "정윤하"], done: 11, total: 82 }
         ]
     }
 };
@@ -200,6 +215,7 @@ let appState = {
     detailMonthIdx: 4,
     syncTimer: null,
     connectionIssue: null,
+    airtableQuotaExceeded: false,
     db: {
         brushing_records: {},
         brushing_pws: {},
@@ -243,24 +259,97 @@ async function airtableFetch(url, options = {}, retries = AIRTABLE_MAX_RETRIES) 
             lastAirtableCallAt = Date.now();
             let response;
             try {
-                response = await fetch(url, options);
+                const controller = options.signal ? null : new AbortController();
+                const opts = controller
+                    ? { ...options, signal: controller.signal }
+                    : options;
+                const timeoutId = controller ? setTimeout(() => controller.abort(), AIRTABLE_TIMEOUT_MS) : null;
+                response = await fetch(url, opts);
+                if (timeoutId) clearTimeout(timeoutId);
             } catch (e) {
                 if (attempt >= retries) throw e;
                 attempt++;
-                await sleep(Math.min(8000, 500 * Math.pow(2, attempt)));
+                await sleep(400);
                 continue;
             }
             if (response.status !== 429) return response;
+
+            // 월간 API 한도 초과는 재시도해도 소용 없음 → 즉시 중단
+            let bodyText = "";
+            try { bodyText = await response.clone().text(); } catch (_) {}
+            if (bodyText.includes("PUBLIC_API_BILLING_LIMIT_EXCEEDED") || bodyText.includes("billing plan limit")) {
+                appState.airtableQuotaExceeded = true;
+                appState.connectionIssue = "이번 달 Airtable API 한도에 도달했어요. 기록은 이 기기에 저장되며, 다음 달 한도 리셋 또는 요금제 상향 후 다시 클라우드 동기화됩니다.";
+                stopPeriodicSync();
+                return response;
+            }
             attempt++;
             if (attempt > retries) return response;
             const retryAfter = Number(response.headers.get('Retry-After'));
             const backoff = Number.isFinite(retryAfter) && retryAfter > 0
-                ? retryAfter * 1000
-                : Math.min(15000, 1000 * Math.pow(2, attempt));
+                ? Math.min(retryAfter * 1000, 2000)
+                : 800;
             await sleep(backoff);
         }
     });
 }
+
+function pruneBrushingRecords(records, keepFrom = RECORDS_KEEP_FROM) {
+    const pruned = {};
+    let keptDays = 0, removedDays = 0;
+    Object.keys(records || {}).forEach(studentKey => {
+        const src = records[studentKey] || {};
+        const dst = {};
+        Object.keys(src).forEach(dateStr => {
+            if (dateStr >= keepFrom) {
+                dst[dateStr] = src[dateStr];
+                keptDays++;
+            } else {
+                removedDays++;
+            }
+        });
+        if (Object.keys(dst).length) pruned[studentKey] = dst;
+    });
+    return { pruned, keptDays, removedDays };
+}
+
+function archiveBrushingThrough(records, untilDate = RECORDS_ARCHIVE_UNTIL) {
+    const archived = {};
+    Object.keys(records || {}).forEach(studentKey => {
+        const src = records[studentKey] || {};
+        const dst = {};
+        Object.keys(src).forEach(dateStr => {
+            if (dateStr <= untilDate) dst[dateStr] = src[dateStr];
+        });
+        if (Object.keys(dst).length) archived[studentKey] = dst;
+    });
+    return archived;
+}
+
+function prepareLocalRecords() {
+    try {
+        if (!localStorage.getItem(RECORDS_BACKUP_KEY) && Object.keys(appState.db.brushing_records || {}).length) {
+            const archived = archiveBrushingThrough(appState.db.brushing_records, RECORDS_ARCHIVE_UNTIL);
+            localStorage.setItem(RECORDS_BACKUP_KEY, JSON.stringify({
+                archivedAt: new Date().toISOString(),
+                until: RECORDS_ARCHIVE_UNTIL,
+                records: archived
+            }));
+        }
+        const { pruned, removedDays } = pruneBrushingRecords(appState.db.brushing_records, RECORDS_KEEP_FROM);
+        if (removedDays > 0) {
+            appState.db.brushing_records = pruned;
+            localStorage.setItem('brushing_records', JSON.stringify(pruned));
+        }
+    } catch (e) {
+        console.warn('로컬 기록 정리 중 오류', e);
+    }
+    if (sessionStorage.getItem('airtableQuotaExceeded') === '1') {
+        appState.airtableQuotaExceeded = true;
+        appState.connectionIssue = "이번 달 Airtable API 한도에 도달했어요. 기록은 이 기기에 저장되며, 다음 달 한도 리셋 또는 요금제 상향 후 다시 클라우드 동기화됩니다.";
+    }
+}
+prepareLocalRecords();
 
 function deepMergeBrushingRecords(local, remote) {
     const merged = JSON.parse(JSON.stringify(local || {}));
@@ -358,15 +447,20 @@ window.addEventListener('DOMContentLoaded', () => {
 
 function initApp() {
     syncDefaultMonth();
-    updateConnectionBadge(null);
+    updateConnectionBadge(appState.airtableQuotaExceeded ? false : null);
     setLoginCheers();
     renderHallOfFame();
 
-    syncWithAirtable().then(success => {
-        updateConnectionBadge(success);
-        refreshActiveStudentView();
-        renderHallOfFame();
-    });
+    if (!appState.airtableQuotaExceeded) {
+        // 로컬 화면을 먼저 보여주고, 클라우드는 짧게만 시도
+        syncWithAirtable().then(success => {
+            updateConnectionBadge(success);
+            refreshActiveStudentView();
+            renderHallOfFame();
+        });
+    } else {
+        updateConnectionBadge(false);
+    }
 
     el.selectGrade.addEventListener('change', () => {
         const grade = el.selectGrade.value;
@@ -402,8 +496,14 @@ function initApp() {
         if (grade !== "관리자" && !name) { alert('이름을 선택해 주세요.'); return; }
 
         el.loadingOverlay.classList.remove('hidden');
-        await syncWithAirtable();
+        if (!appState.airtableQuotaExceeded) {
+            await Promise.race([
+                syncWithAirtable(),
+                sleep(AIRTABLE_TIMEOUT_MS + 500).then(() => false)
+            ]);
+        }
         el.loadingOverlay.classList.add('hidden');
+        updateConnectionBadge(appState.connectionIssue == null && !appState.airtableQuotaExceeded);
 
         appState.currentStudent = { grade, name: grade === "관리자" ? "관리자" : name };
 
@@ -455,7 +555,12 @@ function initApp() {
 
     el.btnSave.addEventListener('click', async () => {
         el.loadingOverlay.classList.remove('hidden');
-        await syncWithAirtable({ force: true });
+        if (!appState.airtableQuotaExceeded) {
+            await Promise.race([
+                syncWithAirtable({ force: true }),
+                sleep(AIRTABLE_TIMEOUT_MS + 500).then(() => false)
+            ]);
+        }
         const studentKey = `${appState.currentStudent.grade}-${appState.currentStudent.name}`;
         appState.db.brushing_records[studentKey] = appState.activeRecord;
         await saveToAirtable('brushing_records', appState.db.brushing_records, { immediate: true });
@@ -530,8 +635,10 @@ function refreshActiveStudentView() {
 
 function startPeriodicSync() {
     stopPeriodicSync();
+    if (appState.airtableQuotaExceeded) return;
     appState.syncTimer = setInterval(async () => {
         if (el.screenCalendar.classList.contains('hidden')) return;
+        if (appState.airtableQuotaExceeded) { stopPeriodicSync(); return; }
         const success = await syncWithAirtable();
         updateConnectionBadge(success);
         refreshActiveStudentView();
@@ -556,6 +663,9 @@ async function syncWithAirtable(options = {}) {
         appState.connectionIssue = "클라우드 설정을 확인해 주세요.";
         return false;
     }
+    if (appState.airtableQuotaExceeded) {
+        return false;
+    }
 
     if (!force && lastSyncAt > 0 && (Date.now() - lastSyncAt) < SYNC_MIN_GAP_MS) {
         return appState.connectionIssue == null;
@@ -566,7 +676,7 @@ async function syncWithAirtable(options = {}) {
         try {
             const url = airtableTableUrl("?maxRecords=100");
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 12000);
+            const timeoutId = setTimeout(() => controller.abort(), AIRTABLE_TIMEOUT_MS);
             const response = await airtableFetch(url, {
                 headers: { "Authorization": `Bearer ${AIRTABLE_TOKEN}` },
                 signal: controller.signal
@@ -574,12 +684,16 @@ async function syncWithAirtable(options = {}) {
             clearTimeout(timeoutId);
 
             if (response.ok) {
+                appState.airtableQuotaExceeded = false;
+                sessionStorage.removeItem('airtableQuotaExceeded');
                 const result = await response.json();
                 if (result && result.records) {
                     let tempRecords = {}, tempPws = {}, tempPraises = {};
+                    let hasBackupRemote = false;
                     result.records.forEach(rec => {
                         const { key, val } = readAirtableRecordFields(rec.fields || {});
                         if (key && rec.id) airtableRecordIds[key] = rec.id;
+                        if (key === RECORDS_BACKUP_KEY) hasBackupRemote = true;
                         if (key && val) {
                             try {
                                 const parsed = JSON.parse(val);
@@ -595,6 +709,28 @@ async function syncWithAirtable(options = {}) {
                     appState.db.brushing_records = deepMergeBrushingRecords(appState.db.brushing_records, tempRecords);
                     appState.db.brushing_pws = mergeSimpleObjects(appState.db.brushing_pws, tempPws);
                     appState.db.brushing_praises = mergePraises(appState.db.brushing_praises, tempPraises);
+
+                    // 클라우드에 9/29 백업이 없으면 만들고, 실사용 데이터는 8월 이후로 축소
+                    if (!hasBackupRemote && Object.keys(appState.db.brushing_records).length) {
+                        const archived = archiveBrushingThrough(appState.db.brushing_records, RECORDS_ARCHIVE_UNTIL);
+                        localStorage.setItem(RECORDS_BACKUP_KEY, JSON.stringify({
+                            archivedAt: new Date().toISOString(),
+                            until: RECORDS_ARCHIVE_UNTIL,
+                            records: archived
+                        }));
+                        await flushSaveToAirtable(RECORDS_BACKUP_KEY, {
+                            archivedAt: new Date().toISOString(),
+                            until: RECORDS_ARCHIVE_UNTIL,
+                            records: archived
+                        }, { skipSync: true });
+                    }
+
+                    const { pruned, removedDays } = pruneBrushingRecords(appState.db.brushing_records, RECORDS_KEEP_FROM);
+                    appState.db.brushing_records = pruned;
+                    if (removedDays > 0) {
+                        await flushSaveToAirtable('brushing_records', pruned, { skipSync: true });
+                    }
+
                     persistLocalDatabase();
                 }
                 appState.connectionIssue = null;
@@ -602,10 +738,19 @@ async function syncWithAirtable(options = {}) {
                 return true;
             }
 
+            let bodyText = "";
+            try { bodyText = await response.text(); } catch (_) {}
             let apiHint = "";
             try {
-                const errJson = JSON.parse(await response.text());
+                const errJson = JSON.parse(bodyText);
                 if (errJson.error && errJson.error.message) apiHint = ` (${errJson.error.message})`;
+                if (errJson.errors && errJson.errors[0] && errJson.errors[0].error === 'PUBLIC_API_BILLING_LIMIT_EXCEEDED') {
+                    appState.airtableQuotaExceeded = true;
+                    sessionStorage.setItem('airtableQuotaExceeded', '1');
+                    appState.connectionIssue = "이번 달 Airtable API 한도에 도달했어요. 기록은 이 기기에 저장되며, 다음 달 한도 리셋 또는 요금제 상향 후 다시 클라우드 동기화됩니다.";
+                    stopPeriodicSync();
+                    return false;
+                }
             } catch (_) { /* ignore */ }
 
             if (response.status === 401) {
@@ -615,7 +760,14 @@ async function syncWithAirtable(options = {}) {
             } else if (response.status === 404) {
                 appState.connectionIssue = `Base ID 또는 테이블 이름 "${AIRTABLE_TABLE_NAME}" 이 틀렸습니다. Airtable 왼쪽 하단 표 이름과 config.js 를 맞추세요.${apiHint}`;
             } else if (response.status === 429) {
-                appState.connectionIssue = "일시적으로 요청이 많아요(HTTP 429). 잠시 후 자동으로 다시 연결합니다.";
+                if (bodyText.includes('PUBLIC_API_BILLING_LIMIT_EXCEEDED') || bodyText.includes('billing plan limit')) {
+                    appState.airtableQuotaExceeded = true;
+                    sessionStorage.setItem('airtableQuotaExceeded', '1');
+                    appState.connectionIssue = "이번 달 Airtable API 한도에 도달했어요. 기록은 이 기기에 저장되며, 다음 달 한도 리셋 또는 요금제 상향 후 다시 클라우드 동기화됩니다.";
+                    stopPeriodicSync();
+                } else {
+                    appState.connectionIssue = "일시적으로 요청이 많아요(HTTP 429). 잠시 후 다시 시도해 주세요. 기록은 이 기기에 저장됩니다.";
+                }
             } else {
                 appState.connectionIssue = `Airtable 연결 실패 (HTTP ${response.status})${apiHint}. airtable-check.html 로 확인하세요.`;
             }
@@ -624,7 +776,7 @@ async function syncWithAirtable(options = {}) {
             if (isFileProtocol) {
                 appState.connectionIssue = "index.html 을 직접 열면 연결되지 않습니다. start.bat 으로 실행하세요.";
             } else {
-                appState.connectionIssue = "인터넷 연결 또는 Airtable 접속을 확인해 주세요.";
+                appState.connectionIssue = "클라우드 응답이 지연되어 로컬 저장 모드로 전환합니다. 양치 기록은 이 기기에 보관됩니다.";
             }
         }
         return false;
@@ -656,9 +808,13 @@ function scheduleSaveToAirtable(key, data) {
 }
 
 async function saveToAirtable(key, data, options = {}) {
+    if (key === 'brushing_records') {
+        const { pruned } = pruneBrushingRecords(data, RECORDS_KEEP_FROM);
+        data = pruned;
+    }
     localStorage.setItem(key, JSON.stringify(data));
     appState.db[key] = data;
-    if (!isCloudMode) return;
+    if (!isCloudMode || appState.airtableQuotaExceeded) return;
 
     const immediate = options.immediate === true || key !== 'brushing_records';
     if (!immediate) {
@@ -672,18 +828,25 @@ async function saveToAirtable(key, data, options = {}) {
     await flushSaveToAirtable(key, data);
 }
 
-async function flushSaveToAirtable(key, data) {
-    if (!isCloudMode) return;
+async function flushSaveToAirtable(key, data, options = {}) {
+    if (!isCloudMode || appState.airtableQuotaExceeded) return;
     try {
-        // 최근에 동기화했으면 생략해 429를 줄입니다.
-        await syncWithAirtable({ force: false });
+        if (!options.skipSync) {
+            // 최근에 동기화했으면 생략해 429를 줄입니다.
+            await syncWithAirtable({ force: false });
+            if (appState.airtableQuotaExceeded) return;
+        }
         if (key === 'brushing_records') {
             appState.db.brushing_records = deepMergeBrushingRecords(appState.db.brushing_records, data);
+            data = appState.db.brushing_records;
+        } else if (key === RECORDS_BACKUP_KEY) {
+            // 백업 키는 db 스키마 밖 — 전달값 그대로 저장
         } else {
             appState.db[key] = mergeSimpleObjects(appState.db[key], data);
+            data = appState.db[key];
         }
-        const mergedData = appState.db[key];
-        persistLocalDatabase();
+        const mergedData = data;
+        if (key !== RECORDS_BACKUP_KEY) persistLocalDatabase();
 
         const fieldKey = getAirtableFieldKeyName();
         const fieldValue = getAirtableFieldValueName();
@@ -775,8 +938,14 @@ async function verifyOrSetPassword() {
 
 async function enterCalendarScreen() {
     el.loadingOverlay.classList.remove('hidden');
-    await syncWithAirtable();
+    if (!appState.airtableQuotaExceeded) {
+        await Promise.race([
+            syncWithAirtable(),
+            sleep(AIRTABLE_TIMEOUT_MS + 500).then(() => false)
+        ]);
+    }
     el.loadingOverlay.classList.add('hidden');
+    updateConnectionBadge(!appState.airtableQuotaExceeded && appState.connectionIssue == null);
 
     el.screenPassword.classList.add('hidden');
     el.screenCalendar.classList.remove('hidden');
@@ -1165,7 +1334,12 @@ async function enterAdminDashboard() {
     el.screenPassword.classList.add('hidden');
     el.screenAdmin.classList.remove('hidden');
     el.loadingOverlay.classList.remove('hidden');
-    await syncWithAirtable();
+    if (!appState.airtableQuotaExceeded) {
+        await Promise.race([
+            syncWithAirtable(),
+            sleep(AIRTABLE_TIMEOUT_MS + 500).then(() => false)
+        ]);
+    }
     const today = new Date();
     el.adminFilterMonth.value = (today.getFullYear() === 2026 && today.getMonth() >= 4 && today.getMonth() <= 11) ? today.getMonth() : "4";
     updateAdminGlobalStats();
