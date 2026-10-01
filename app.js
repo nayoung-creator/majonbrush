@@ -173,9 +173,19 @@ const HISTORICAL_HALL_OF_FAME = {
             { rank: 1, names: ["윤설", "이서하", "정윤슬"], done: 17, total: 19 },
             { rank: 2, names: ["이수연"], done: 16, total: 19 },
             { rank: 5, names: ["안이정"], done: 15, total: 19 }
+        ],
+        gradeWinners: [
+            { grade: "2학년", names: ["윤설", "이서하"], done: 17, total: 19 },
+            { grade: "3학년", names: ["정윤하"], done: 12, total: 19 },
+            { grade: "4학년", names: ["유민호"], done: 7, total: 19 },
+            { grade: "5학년", names: ["정윤슬"], done: 17, total: 19 },
+            { grade: "6학년", names: ["장태평"], done: 10, total: 19 }
         ]
     }
 };
+
+const GRADE_WINNER_MIN_RATE = 0.5;
+const GRADE_WINNER_GRADES = ["2학년", "3학년", "4학년", "5학년", "6학년"];
 
 const LOGIN_CHEERS = [
     ["이번 달도 화이팅!", "깨끗한 치아를 위해 화이팅!"],
@@ -510,6 +520,9 @@ window.addEventListener('DOMContentLoaded', () => {
     el.hofMonthLabel = document.getElementById('hof-month-label');
     el.hofWinners = document.getElementById('hof-winners');
     el.hofSchoolRate = document.getElementById('hof-school-rate');
+    el.gradeWinnersPanel = document.getElementById('grade-winners-panel');
+    el.gradeWinnersMonthLabel = document.getElementById('grade-winners-month-label');
+    el.gradeWinnersList = document.getElementById('grade-winners-list');
     el.loginCheer1 = document.getElementById('login-cheer-1');
     el.loginCheer2 = document.getElementById('login-cheer-2');
 
@@ -1826,20 +1839,84 @@ function computeTopStudentsForMonth(monthIdx, limit = 5) {
     return ranks.filter(r => r.rank <= limit);
 }
 
+function meetsGradeWinnerThreshold(done, total) {
+    if (!total || total <= 0) return false;
+    return (done / total) >= GRADE_WINNER_MIN_RATE;
+}
+
+function filterGradeWinnersByThreshold(winners) {
+    return (winners || []).filter(w => meetsGradeWinnerThreshold(w.done, w.total));
+}
+
+function computeGradeWinnersForMonth(monthIdx) {
+    const dates = getPossibleDatesForMonth(monthIdx);
+    if (!dates.length) return [];
+    const total = dates.length;
+    const winners = [];
+    GRADE_WINNER_GRADES.forEach(grade => {
+        const names = studentsData[grade] || [];
+        let bestDone = -1;
+        const scored = [];
+        names.forEach(name => {
+            const record = appState.db.brushing_records[`${grade}-${name}`] || {};
+            let practiceDays = 0;
+            dates.forEach(d => {
+                if (isDayFullyBrushed(record[d], d) || record[d] === true) practiceDays++;
+            });
+            scored.push({ name, done: practiceDays });
+            if (practiceDays > bestDone) bestDone = practiceDays;
+        });
+        if (bestDone <= 0) return;
+        const topNames = scored.filter(s => s.done === bestDone).map(s => s.name);
+        winners.push({ grade, names: topNames, done: bestDone, total });
+    });
+    return filterGradeWinnersByThreshold(winners);
+}
+
+function renderGradeWinners(monthIdx, monthLabel) {
+    if (!el.gradeWinnersList) return;
+    if (el.gradeWinnersMonthLabel) {
+        el.gradeWinnersMonthLabel.textContent = `${monthLabel} 학년별 1위`;
+    }
+
+    let winners = [];
+    const hist = HISTORICAL_HALL_OF_FAME[monthIdx];
+    if (hist && Array.isArray(hist.gradeWinners)) {
+        winners = filterGradeWinnersByThreshold(hist.gradeWinners);
+    } else {
+        winners = computeGradeWinnersForMonth(monthIdx);
+    }
+
+    if (!winners.length) {
+        el.gradeWinnersList.innerHTML = '<p class="text-center text-gray-400 text-sm">실천율 50% 이상인 학년 1위가 아직 없어요.</p>';
+        return;
+    }
+
+    el.gradeWinnersList.innerHTML = winners.map(w => {
+        const namesHtml = w.names.map(name =>
+            `${name} <span class="text-teal-600 font-sans font-bold text-sm">${w.done}/${w.total}</span>`
+        ).join(', ');
+        return `<div class="bg-white/80 rounded-xl px-3 py-2 border border-teal-200 flex flex-wrap items-center gap-x-2 gap-y-1"><span class="font-bold text-teal-800">${w.grade}</span><span class="text-slate-700">${namesHtml}</span></div>`;
+    }).join('');
+}
+
 function renderHallOfFame() {
     if (!el.hofWinners) return;
     const monthIdx = getLastCompletedMonthIndex();
     const monthNames = ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"];
     let ranks = [];
     let label = `지난 달 (${monthNames[monthIdx]}) 우수 실천자`;
+    let monthLabelForGrades = monthNames[monthIdx];
 
     if (HISTORICAL_HALL_OF_FAME[monthIdx]) {
         const hist = HISTORICAL_HALL_OF_FAME[monthIdx];
         label = `${hist.monthLabel} 우수 실천자`;
+        monthLabelForGrades = hist.monthLabel;
         ranks = hist.ranks;
     } else {
         ranks = computeTopStudentsForMonth(monthIdx, 5);
         label = `${monthNames[monthIdx]} 우수 실천자 (1~5등)`;
+        monthLabelForGrades = monthNames[monthIdx];
     }
 
     if (el.hofMonthLabel) el.hofMonthLabel.textContent = label;
@@ -1868,4 +1945,6 @@ function renderHallOfFame() {
             el.hofSchoolRate.textContent = rate === null ? "0%" : `${rate}%`;
         }
     }
+
+    renderGradeWinners(monthIdx, monthLabelForGrades);
 }
