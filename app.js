@@ -8,8 +8,71 @@ const AIRTABLE_TIMEOUT_MS = 6000;
 const RECORDS_KEEP_FROM = "2026-08-01";
 const RECORDS_BACKUP_KEY = "brushing_records_backup_20260929";
 const RECORDS_ARCHIVE_UNTIL = "2026-09-29";
-const QUOTA_RESUME_DATE_LABEL = "10월 1일";
-const QUOTA_OFFLINE_MESSAGE = "지금은 오프라인 저장 중이에요. 양치 기록은 이 기기에 저장되며, 10월 1일부터 클라우드 백업이 다시 시작됩니다. 그때 이 기기의 기록도 다시 연동됩니다.";
+function getQuotaMonthKey(d = new Date()) {
+    return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, "0")}`;
+}
+
+function getNextMonthResumeLabel(fromMonthKey) {
+    let y, m;
+    if (fromMonthKey && /^\d{4}-\d{2}$/.test(fromMonthKey)) {
+        y = parseInt(fromMonthKey.slice(0, 4), 10);
+        m = parseInt(fromMonthKey.slice(5, 7), 10) + 1;
+    } else {
+        const now = new Date();
+        y = now.getFullYear();
+        m = now.getMonth() + 2; // next month after current
+    }
+    if (m > 12) { y += 1; m -= 12; }
+    return `${m}월 1일`;
+}
+
+function getQuotaOfflineMessage() {
+    const marked = sessionStorage.getItem("airtableQuotaMonth") || getQuotaMonthKey();
+    const resume = getNextMonthResumeLabel(marked);
+    return `지금은 오프라인 저장 중이에요. 양치 기록은 이 기기에 저장되며, ${resume}부터 클라우드 백업이 다시 시작됩니다. 그때 이 기기의 기록도 다시 연동됩니다.`;
+}
+
+function markQuotaExceeded() {
+    appState.airtableQuotaExceeded = true;
+    sessionStorage.setItem("airtableQuotaExceeded", "1");
+    sessionStorage.setItem("airtableQuotaMonth", getQuotaMonthKey());
+    appState.connectionIssue = getQuotaOfflineMessage();
+    stopPeriodicSync();
+}
+
+function clearQuotaExceededState() {
+    appState.airtableQuotaExceeded = false;
+    sessionStorage.removeItem("airtableQuotaExceeded");
+    sessionStorage.removeItem("airtableQuotaMonth");
+    if (appState.connectionIssue && appState.connectionIssue.includes("오프라인 저장 중")) {
+        appState.connectionIssue = null;
+    }
+}
+
+/** 한도가 걸린 달의 다음 달이 되면 안내를 닫고 다시 클라우드 연결을 시도합니다. */
+function clearQuotaIfNewMonth() {
+    const flagged = sessionStorage.getItem("airtableQuotaExceeded") === "1";
+    if (!flagged) return false;
+    const marked = sessionStorage.getItem("airtableQuotaMonth");
+    const nowKey = getQuotaMonthKey();
+    // 예전에 10월 1일 안내만 남긴 경우(월 키 없음) → 2026-10 이후면 해제
+    if (!marked) {
+        if (nowKey >= "2026-10") {
+            clearQuotaExceededState();
+            return true;
+        }
+        appState.airtableQuotaExceeded = true;
+        appState.connectionIssue = getQuotaOfflineMessage();
+        return false;
+    }
+    if (nowKey > marked) {
+        clearQuotaExceededState();
+        return true;
+    }
+    appState.airtableQuotaExceeded = true;
+    appState.connectionIssue = getQuotaOfflineMessage();
+    return false;
+}
 
 const cfg = window.APP_CONFIG || {};
 const AIRTABLE_TOKEN = (cfg.AIRTABLE_TOKEN || "").trim();
@@ -102,6 +165,14 @@ const HISTORICAL_HALL_OF_FAME = {
             { rank: 3, names: ["이수연"], done: 13, total: 82 },
             { rank: 4, names: ["신은하"], done: 12, total: 82 },
             { rank: 5, names: ["노건호", "노지호", "정윤하"], done: 11, total: 82 }
+        ]
+    },
+    8: {
+        monthLabel: "2026년 9월",
+        ranks: [
+            { rank: 1, names: ["윤설", "이서하", "정윤슬"], done: 17, total: 19 },
+            { rank: 2, names: ["이수연"], done: 16, total: 19 },
+            { rank: 5, names: ["안이정"], done: 15, total: 19 }
         ]
     }
 };
@@ -280,9 +351,7 @@ async function airtableFetch(url, options = {}, retries = AIRTABLE_MAX_RETRIES) 
             let bodyText = "";
             try { bodyText = await response.clone().text(); } catch (_) {}
             if (bodyText.includes("PUBLIC_API_BILLING_LIMIT_EXCEEDED") || bodyText.includes("billing plan limit")) {
-                appState.airtableQuotaExceeded = true;
-                appState.connectionIssue = QUOTA_OFFLINE_MESSAGE;
-                stopPeriodicSync();
+                markQuotaExceeded();
                 return response;
             }
             attempt++;
@@ -346,10 +415,8 @@ function prepareLocalRecords() {
     } catch (e) {
         console.warn('로컬 기록 정리 중 오류', e);
     }
-    if (sessionStorage.getItem('airtableQuotaExceeded') === '1') {
-        appState.airtableQuotaExceeded = true;
-        appState.connectionIssue = QUOTA_OFFLINE_MESSAGE;
-    }
+    // 다음 달이 되면 오프라인 안내를 닫고, 아직 한도 달이면 안내 유지
+    clearQuotaIfNewMonth();
 }
 prepareLocalRecords();
 
@@ -451,6 +518,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
 function initApp() {
     syncDefaultMonth();
+    clearQuotaIfNewMonth();
     updateConnectionBadge(appState.airtableQuotaExceeded ? false : null);
     setLoginCheers();
     renderHallOfFame();
@@ -688,8 +756,7 @@ async function syncWithAirtable(options = {}) {
             clearTimeout(timeoutId);
 
             if (response.ok) {
-                appState.airtableQuotaExceeded = false;
-                sessionStorage.removeItem('airtableQuotaExceeded');
+                clearQuotaExceededState();
                 const result = await response.json();
                 if (result && result.records) {
                     let tempRecords = {}, tempPws = {}, tempPraises = {};
@@ -749,10 +816,7 @@ async function syncWithAirtable(options = {}) {
                 const errJson = JSON.parse(bodyText);
                 if (errJson.error && errJson.error.message) apiHint = ` (${errJson.error.message})`;
                 if (errJson.errors && errJson.errors[0] && errJson.errors[0].error === 'PUBLIC_API_BILLING_LIMIT_EXCEEDED') {
-                    appState.airtableQuotaExceeded = true;
-                    sessionStorage.setItem('airtableQuotaExceeded', '1');
-                    appState.connectionIssue = QUOTA_OFFLINE_MESSAGE;
-                    stopPeriodicSync();
+                    markQuotaExceeded();
                     return false;
                 }
             } catch (_) { /* ignore */ }
@@ -765,10 +829,7 @@ async function syncWithAirtable(options = {}) {
                 appState.connectionIssue = `Base ID 또는 테이블 이름 "${AIRTABLE_TABLE_NAME}" 이 틀렸습니다. Airtable 왼쪽 하단 표 이름과 config.js 를 맞추세요.${apiHint}`;
             } else if (response.status === 429) {
                 if (bodyText.includes('PUBLIC_API_BILLING_LIMIT_EXCEEDED') || bodyText.includes('billing plan limit')) {
-                    appState.airtableQuotaExceeded = true;
-                    sessionStorage.setItem('airtableQuotaExceeded', '1');
-                    appState.connectionIssue = QUOTA_OFFLINE_MESSAGE;
-                    stopPeriodicSync();
+                    markQuotaExceeded();
                 } else {
                     appState.connectionIssue = "일시적으로 요청이 많아요(HTTP 429). 잠시 후 다시 시도해 주세요. 기록은 이 기기에 저장됩니다.";
                 }
@@ -1574,7 +1635,7 @@ function updateConnectionBadge(status) {
         if (el.connectionHelpBanner && el.connectionHelpText) {
             el.connectionHelpBanner.classList.remove('hidden');
             if (el.connectionHelpTitle) el.connectionHelpTitle.textContent = "📴 오프라인 저장 중";
-            el.connectionHelpText.textContent = QUOTA_OFFLINE_MESSAGE;
+            el.connectionHelpText.textContent = getQuotaOfflineMessage();
             if (el.connectionHelpLink) el.connectionHelpLink.classList.add('hidden');
         }
         return;
