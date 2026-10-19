@@ -126,7 +126,7 @@ const studentsData = {
     "2학년": ["노지호", "안이정", "윤설", "이서하", "이은우"],
     "3학년": ["김도훈", "김은찬", "신은하", "장연우", "전이안", "정윤하"],
     "4학년": ["김지연", "노연호", "박서우", "유민호", "장치원", "장호원", "최한결"],
-    "5학년": ["강서희", "김지호", "이수연", "장재원", "정윤슬"],
+    "5학년": ["윤서희", "김지호", "이수연", "장재원", "정윤슬"],
     "6학년": ["김겨울", "김기헌", "김성민", "김윤형", "노건호", "오세준", "장태평", "정민준", "조한결"]
 };
 
@@ -409,6 +409,23 @@ function archiveBrushingThrough(records, untilDate = RECORDS_ARCHIVE_UNTIL) {
 
 function prepareLocalRecords() {
     try {
+        // 이름 변경: 5학년 강서희 → 윤서희 (로컬 키 이전)
+        const renamePairs = [["5학년-강서희", "5학년-윤서희"]];
+        renamePairs.forEach(([fromKey, toKey]) => {
+            ["brushing_records", "brushing_pws", "brushing_praises"].forEach(store => {
+                const bag = appState.db[store] || {};
+                if (bag[fromKey] == null) return;
+                if (store === "brushing_records") {
+                    bag[toKey] = deepMergeBrushingRecords(bag[toKey] || {}, bag[fromKey]);
+                } else if (store === "brushing_praises") {
+                    bag[toKey] = mergePraises(bag[toKey] || {}, bag[fromKey]);
+                } else {
+                    if (bag[toKey] == null) bag[toKey] = bag[fromKey];
+                }
+                delete bag[fromKey];
+            });
+        });
+
         if (!localStorage.getItem(RECORDS_BACKUP_KEY) && Object.keys(appState.db.brushing_records || {}).length) {
             const archived = archiveBrushingThrough(appState.db.brushing_records, RECORDS_ARCHIVE_UNTIL);
             localStorage.setItem(RECORDS_BACKUP_KEY, JSON.stringify({
